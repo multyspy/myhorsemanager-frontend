@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.emergent.horse-app-i18nf9b82183"
+      "bundleIdentifier": "app.emergent.horse-app-i18nf9b82183",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -39,6 +42,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "15493da4-b533-4a95-9e0f-1078c78e6274"
+      }
     }
   }
 }
