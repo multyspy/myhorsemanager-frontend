@@ -19,20 +19,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { compressImage, processPDF, showFileTooLargeAlert, MAX_SIZE_KB, getFileSizeKB } from '../src/utils/mediaUtils';
+import { compressImage } from '../src/utils/mediaUtils';
 
-interface Document {
-  name: string;
-  data: string;
-  uploaded_at?: string;
-}
+const MAX_SIZE_KB = 250; // Maximum photo size in KB
 
 interface Rider {
   id: string;
@@ -45,7 +39,6 @@ interface Rider {
   notes?: string;
   territorial_license?: string;
   national_license?: string;
-  documents?: Document[];
   created_at: string;
   updated_at: string;
 }
@@ -78,14 +71,13 @@ export default function RidersScreen() {
   const [notes, setNotes] = useState('');
   const [territorialLicense, setTerritorialLicense] = useState('');
   const [nationalLicense, setNationalLicense] = useState('');
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [saving, setSaving] = useState(false);
   
   // Date picker state
   const [selectedBirthDate, setSelectedBirthDate] = useState(new Date());
   const [showBirthDatePicker, setShowBirthDatePicker] = useState(false);
   
-  // Photo/Document viewer state
+  // Photo viewer state
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [viewingPhotoTitle, setViewingPhotoTitle] = useState<string>('');
@@ -137,7 +129,6 @@ export default function RidersScreen() {
     setNotes('');
     setTerritorialLicense('');
     setNationalLicense('');
-    setDocuments([]);
     setEditingRider(null);
   };
 
@@ -161,7 +152,6 @@ export default function RidersScreen() {
     setNotes(rider.notes || '');
     setTerritorialLicense(rider.territorial_license || '');
     setNationalLicense(rider.national_license || '');
-    setDocuments(rider.documents || []);
     setModalVisible(true);
   };
 
@@ -300,105 +290,6 @@ export default function RidersScreen() {
     setPhotoViewerVisible(true);
   };
 
-  const pickDocument = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        
-        if (asset.uri) {
-          // Check file size first
-          const fileSizeKB = await getFileSizeKB(asset.uri);
-          
-          if (fileSizeKB > MAX_SIZE_KB) {
-            showFileTooLargeAlert(asset.name || 'documento.pdf', fileSizeKB, MAX_SIZE_KB, t);
-            return;
-          }
-          
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          
-          const newDoc: Document = {
-            name: asset.name || 'documento.pdf',
-            data: `data:application/pdf;base64,${base64}`,
-            uploaded_at: new Date().toISOString(),
-          };
-          
-          setDocuments([...documents, newDoc]);
-        }
-      }
-    } catch (error) {
-      console.error('Error picking document:', error);
-      Alert.alert(t('error'), t('connectionError'));
-    }
-  };
-
-  const removeDocument = (index: number) => {
-    const newDocs = documents.filter((_, i) => i !== index);
-    setDocuments(newDocs);
-  };
-
-  // Function to view/download document
-  const viewDocument = async (doc: Document) => {
-    try {
-      if (Platform.OS === 'web') {
-        // For web: Create a blob and open/download
-        const base64Data = doc.data.split(',')[1] || doc.data;
-        const byteCharacters = atob(base64Data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        
-        // Open in new tab
-        window.open(url, '_blank');
-      } else {
-        // For mobile: Use expo-file-system to save and expo-sharing to share
-        try {
-          const base64Data = doc.data.split(',')[1] || doc.data;
-          const fileUri = `${FileSystem.cacheDirectory}${doc.name}`;
-          
-          await FileSystem.writeAsStringAsync(fileUri, base64Data, {
-            encoding: 'base64',
-          });
-          
-          // Check if sharing is available
-          const isAvailable = await Sharing.isAvailableAsync();
-          if (isAvailable) {
-            await Sharing.shareAsync(fileUri, {
-              mimeType: 'application/pdf',
-              dialogTitle: doc.name,
-            });
-          } else {
-            Alert.alert(
-              t('documentSaved'),
-              `${t('documentSavedAt')}: ${doc.name}`,
-              [{ text: 'OK' }]
-            );
-          }
-        } catch (fsError) {
-          console.error('FileSystem error:', fsError);
-          Alert.alert(
-            t('openDocument'),
-            doc.name,
-            [{ text: 'OK' }]
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Error viewing document:', error);
-      Alert.alert(t('error'), t('cannotOpenDocument'));
-    }
-  };
-
   const saveRider = async () => {
     if (!name.trim()) {
       Alert.alert(t('error'), t('nameRequired'));
@@ -417,7 +308,6 @@ export default function RidersScreen() {
         notes: notes.trim() || null,
         territorial_license: territorialLicense.trim() || null,
         national_license: nationalLicense.trim() || null,
-        documents: documents,
       };
 
       let response;
@@ -749,36 +639,6 @@ export default function RidersScreen() {
                   </View>
                 ))}
               </ScrollView>
-            )}
-
-            <Text style={styles.sectionHeader}>{t('pdfDocuments')}</Text>
-            
-            <TouchableOpacity style={styles.addDocButton} onPress={pickDocument}>
-              <Ionicons name="document-attach" size={20} color="#2E7D32" />
-              <Text style={styles.addDocButtonText}>{t('addPdfDocument')}</Text>
-            </TouchableOpacity>
-
-            {documents.length > 0 && (
-              <View style={styles.documentsContainer}>
-                {documents.map((doc, index) => (
-                  <View key={index} style={styles.documentItem}>
-                    <TouchableOpacity 
-                      style={styles.documentTouchable}
-                      onPress={() => viewDocument(doc)}
-                    >
-                      <Ionicons name="document-text" size={20} color="#E53935" />
-                      <Text style={styles.documentName} numberOfLines={1}>{doc.name}</Text>
-                      <Ionicons name="eye-outline" size={18} color="#2E7D32" style={{ marginLeft: 8 }} />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.removeDocButton}
-                      onPress={() => removeDocument(index)}
-                    >
-                      <Ionicons name="close-circle" size={22} color="#999" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
             )}
 
             <View style={styles.bottomSpacer} />

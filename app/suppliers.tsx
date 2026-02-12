@@ -93,6 +93,7 @@ export default function SuppliersScreen() {
   // Form state
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
@@ -183,6 +184,7 @@ export default function SuppliersScreen() {
   const resetForm = () => {
     setName('');
     setCategory('');
+    setCustomCategory('');
     setPhone('');
     setEmail('');
     setAddress('');
@@ -201,6 +203,7 @@ export default function SuppliersScreen() {
     setEditingSupplier(supplier);
     setName(supplier.name);
     setCategory(supplier.category || '');
+    setCustomCategory((supplier as any).custom_category || '');
     setPhone(supplier.phone || '');
     setEmail(supplier.email || '');
     setAddress(supplier.address || '');
@@ -240,6 +243,7 @@ export default function SuppliersScreen() {
       const supplierData = {
         name: name.trim(),
         category: category || null,
+        custom_category: category === 'otros' ? customCategory.trim() : null,
         phone: phone.trim() || null,
         email: email.trim() || null,
         address: address.trim() || null,
@@ -271,8 +275,12 @@ export default function SuppliersScreen() {
 
   const deleteSupplier = (supplier: Supplier) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(`${t('confirmDeleteSupplier')}`);
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(`${t('confirmDeleteSupplier')}`);
+        if (confirmed) {
+          performDeleteSupplier(supplier.id);
+        }
+      } catch (e) {
         performDeleteSupplier(supplier.id);
       }
     } else {
@@ -567,6 +575,19 @@ export default function SuppliersScreen() {
               </Text>
               <Ionicons name="chevron-down" size={20} color="#666" />
             </TouchableOpacity>
+
+            {category === 'otros' && (
+              <>
+                <Text style={styles.label}>Especificar Categoría</Text>
+                <TextInput
+                  style={styles.input}
+                  value={customCategory}
+                  onChangeText={setCustomCategory}
+                  placeholder="Escribir categoría personalizada"
+                  placeholderTextColor="#999"
+                />
+              </>
+            )}
 
             <Text style={styles.label}>{t('contactPerson')}</Text>
             <TextInput
