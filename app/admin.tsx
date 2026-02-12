@@ -20,7 +20,12 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import Constants from 'expo-constants';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+// Production URL (Railway) - ALWAYS use this for production builds
+const PRODUCTION_API_URL = 'https://web-production-2e659.up.railway.app';
+const isDevelopment = __DEV__;
+const API_URL = isDevelopment 
+  ? (process.env.EXPO_PUBLIC_BACKEND_URL || PRODUCTION_API_URL)
+  : PRODUCTION_API_URL;
 
 interface User {
   id: string;
