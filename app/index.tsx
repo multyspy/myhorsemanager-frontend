@@ -19,18 +19,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { compressImage } from '../src/utils/mediaUtils';
 
-interface Document {
-  name: string;
-  data: string;
-  uploaded_at?: string;
-}
+const MAX_SIZE_KB = 250; // Maximum photo size in KB
 
 interface Horse {
   id: string;
@@ -40,11 +37,11 @@ interface Horse {
   color?: string;
   notes?: string;
   photo?: string;
+  photos?: string[];
   stabling_location?: string;
   territorial_license?: string;
   national_license?: string;
   owner?: string;
-  documents?: Document[];
   created_at: string;
   updated_at: string;
 }
@@ -65,18 +62,18 @@ export default function HorsesScreen() {
   const [color, setColor] = useState('');
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<string[]>([]);
   const [stablingLocation, setStablingLocation] = useState('');
   const [territorialLicense, setTerritorialLicense] = useState('');
   const [nationalLicense, setNationalLicense] = useState('');
   const [owner, setOwner] = useState('');
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [saving, setSaving] = useState(false);
   
   // Date picker state
   const [selectedBirthDate, setSelectedBirthDate] = useState(new Date());
   const [showBirthDatePicker, setShowBirthDatePicker] = useState(false);
   
-  // Photo/Document viewer state
+  // Photo viewer state
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [viewingPhotoTitle, setViewingPhotoTitle] = useState<string>('');
@@ -122,11 +119,11 @@ export default function HorsesScreen() {
     setColor('');
     setNotes('');
     setPhoto(null);
+    setPhotos([]);
     setStablingLocation('');
     setTerritorialLicense('');
     setNationalLicense('');
     setOwner('');
-    setDocuments([]);
     setEditingHorse(null);
   };
 
@@ -147,11 +144,11 @@ export default function HorsesScreen() {
     setColor(horse.color || '');
     setNotes(horse.notes || '');
     setPhoto(horse.photo || null);
+    setPhotos(horse.photos || []);
     setStablingLocation(horse.stabling_location || '');
     setTerritorialLicense(horse.territorial_license || '');
     setNationalLicense(horse.national_license || '');
     setOwner(horse.owner || '');
-    setDocuments(horse.documents || []);
     setModalVisible(true);
   };
 
@@ -166,13 +163,76 @@ export default function HorsesScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
+      quality: 1, // Full quality, we'll compress after
     });
 
-    if (!result.canceled && result.assets[0].base64) {
-      setPhoto(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    if (!result.canceled && result.assets[0].uri) {
+      // Compress image to max 250KB
+      const compressedPhoto = await compressImage(result.assets[0].uri, MAX_SIZE_KB);
+      if (compressedPhoto) {
+        setPhoto(compressedPhoto);
+      } else {
+        Alert.alert(t('error'), t('imageCompressionFailed') || 'Error al comprimir la imagen');
+      }
     }
+  };
+
+  // Multiple photos functions
+  const pickMultiplePhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('error'), t('permissionsRequired'));
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0].uri) {
+      const compressedPhoto = await compressImage(result.assets[0].uri, MAX_SIZE_KB);
+      if (compressedPhoto) {
+        setPhotos([...photos, compressedPhoto]);
+      } else {
+        Alert.alert(t('error'), t('imageCompressionFailed') || 'Error al comprimir la imagen');
+      }
+    }
+  };
+
+  const takeMultiplePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('error'), t('permissionsRequired'));
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0].uri) {
+      const compressedPhoto = await compressImage(result.assets[0].uri, MAX_SIZE_KB);
+      if (compressedPhoto) {
+        setPhotos([...photos, compressedPhoto]);
+      } else {
+        Alert.alert(t('error'), t('imageCompressionFailed') || 'Error al comprimir la imagen');
+      }
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    const newPhotos = [...photos];
+    newPhotos.splice(index, 1);
+    setPhotos(newPhotos);
+  };
+
+  const viewPhoto = (photoUri: string, title: string) => {
+    setViewingPhoto(photoUri);
+    setViewingPhotoTitle(title);
+    setPhotoViewerVisible(true);
   };
 
   const onBirthDateChange = (event: any, date?: Date) => {
@@ -192,104 +252,7 @@ export default function HorsesScreen() {
     return `${day}/${month}/${year}`;
   };
 
-  const pickDocument = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        
-        // Read file and convert to base64
-        if (asset.uri) {
-          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          
-          const newDoc: Document = {
-            name: asset.name || 'documento.pdf',
-            data: `data:application/pdf;base64,${base64}`,
-            uploaded_at: new Date().toISOString(),
-          };
-          
-          setDocuments([...documents, newDoc]);
-        }
-      }
-    } catch (error) {
-      console.error('Error picking document:', error);
-      Alert.alert(t('error'), t('connectionError'));
-    }
-  };
-
-  const removeDocument = (index: number) => {
-    const newDocs = documents.filter((_, i) => i !== index);
-    setDocuments(newDocs);
-  };
-
-  // Function to view photo in full screen
-  const viewPhoto = (photoUri: string, title: string) => {
-    setViewingPhoto(photoUri);
-    setViewingPhotoTitle(title);
-    setPhotoViewerVisible(true);
-  };
-
-  // Function to view/download document
-  const viewDocument = async (doc: Document) => {
-    try {
-      if (Platform.OS === 'web') {
-        // For web: Create a blob and open/download
-        const base64Data = doc.data.split(',')[1] || doc.data;
-        const byteCharacters = atob(base64Data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        
-        // Open in new tab
-        window.open(url, '_blank');
-      } else {
-        // For mobile: Use expo-file-system to save and share
-        try {
-          const base64Data = doc.data.split(',')[1] || doc.data;
-          const fileUri = `${FileSystem.cacheDirectory}${doc.name}`;
-          
-          await FileSystem.writeAsStringAsync(fileUri, base64Data, {
-            encoding: 'base64',
-          });
-          
-          // Use Linking to try to open the file
-          // On iOS/Android, this may open a share dialog or document viewer
-          if (await Linking.canOpenURL(fileUri)) {
-            await Linking.openURL(fileUri);
-          } else {
-            // Fallback: Show alert with file location
-            Alert.alert(
-              t('documentSaved'),
-              `${t('documentSavedAt')}: ${doc.name}`,
-              [{ text: 'OK' }]
-            );
-          }
-        } catch (fsError) {
-          console.error('FileSystem error:', fsError);
-          // Fallback for mobile: Just show the document name
-          Alert.alert(
-            t('openDocument'),
-            doc.name,
-            [{ text: 'OK' }]
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Error viewing document:', error);
-      Alert.alert(t('error'), t('cannotOpenDocument'));
-    }
-  };
-
+  // Function to view/download document (kept for backwards compatibility with existing data)
   const saveHorse = async () => {
     if (!name.trim()) {
       Alert.alert(t('error'), t('nameRequired'));
@@ -305,11 +268,11 @@ export default function HorsesScreen() {
         color: color.trim() || null,
         notes: notes.trim() || null,
         photo: photo,
+        photos: photos,
         stabling_location: stablingLocation.trim() || null,
         territorial_license: territorialLicense.trim() || null,
         national_license: nationalLicense.trim() || null,
         owner: owner.trim() || null,
-        documents: documents,
       };
 
       let response;
@@ -335,18 +298,31 @@ export default function HorsesScreen() {
   };
 
   const deleteHorse = (horse: Horse) => {
-    Alert.alert(
-      t('confirmDelete'),
-      `${t('confirmDelete')} ${horse.name}?`,
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('delete'),
-          style: 'destructive',
-          onPress: () => performDeleteHorse(horse.id),
-        },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      // Use window.confirm for web
+      try {
+        const confirmed = window.confirm(`${t('confirmDelete')} ${horse.name}?`);
+        if (confirmed) {
+          performDeleteHorse(horse.id);
+        }
+      } catch (e) {
+        // Fallback if window.confirm fails
+        performDeleteHorse(horse.id);
+      }
+    } else {
+      Alert.alert(
+        t('confirmDelete'),
+        `${t('confirmDelete')} ${horse.name}?`,
+        [
+          { text: t('cancel'), style: 'cancel' },
+          {
+            text: t('delete'),
+            style: 'destructive',
+            onPress: () => performDeleteHorse(horse.id),
+          },
+        ]
+      );
+    }
   };
 
   const performDeleteHorse = async (horseId: string) => {
@@ -615,34 +591,36 @@ export default function HorsesScreen() {
               numberOfLines={4}
             />
 
-            <Text style={styles.sectionHeader}>{t('pdfDocuments')}</Text>
-            
-            <TouchableOpacity style={styles.addDocButton} onPress={pickDocument}>
-              <Ionicons name="document-attach" size={20} color="#2E7D32" />
-              <Text style={styles.addDocButtonText}>{t('addPdfDocument')}</Text>
-            </TouchableOpacity>
-
-            {documents.length > 0 && (
-              <View style={styles.documentsContainer}>
-                {documents.map((doc, index) => (
-                  <View key={index} style={styles.documentItem}>
-                    <TouchableOpacity 
-                      style={styles.documentTouchable}
-                      onPress={() => viewDocument(doc)}
-                    >
-                      <Ionicons name="document-text" size={20} color="#E53935" />
-                      <Text style={styles.documentName} numberOfLines={1}>{doc.name}</Text>
-                      <Ionicons name="eye-outline" size={18} color="#2E7D32" style={{ marginLeft: 8 }} />
+            <Text style={styles.sectionHeader}>{t('photos') || 'Fotos'}</Text>
+            <View style={styles.photoButtons}>
+              <TouchableOpacity style={styles.photoButton} onPress={pickMultiplePhoto}>
+                <Ionicons name="images" size={24} color="#2E7D32" />
+                <Text style={styles.photoButtonText}>{t('gallery')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.photoButton} onPress={takeMultiplePhoto}>
+                <Ionicons name="camera" size={24} color="#2E7D32" />
+                <Text style={styles.photoButtonText}>{t('camera')}</Text>
+              </TouchableOpacity>
+            </View>
+            {photos.length > 0 && (
+              <ScrollView horizontal style={styles.photosGallery} showsHorizontalScrollIndicator={false}>
+                {photos.map((photoItem, index) => (
+                  <View key={index} style={styles.photoPreview}>
+                    <TouchableOpacity onPress={() => viewPhoto(photoItem, `${t('photo') || 'Foto'} ${index + 1}`)}>
+                      <Image source={{ uri: photoItem }} style={styles.photoThumbnail} />
+                      <View style={styles.viewPhotoOverlay}>
+                        <Ionicons name="expand-outline" size={20} color="#fff" />
+                      </View>
                     </TouchableOpacity>
                     <TouchableOpacity 
-                      style={styles.removeDocButton}
-                      onPress={() => removeDocument(index)}
+                      style={styles.removePhotoButton}
+                      onPress={() => removePhoto(index)}
                     >
-                      <Ionicons name="close-circle" size={22} color="#999" />
+                      <Ionicons name="close-circle" size={24} color="#F44336" />
                     </TouchableOpacity>
                   </View>
                 ))}
-              </View>
+              </ScrollView>
             )}
 
             <View style={styles.bottomSpacer} />
@@ -996,5 +974,55 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  photoButtons: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 12,
+  },
+  photoButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  photoButtonText: {
+    fontSize: 14,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  photosGallery: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  photoPreview: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  photoThumbnail: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  viewPhotoOverlay: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 4,
+    padding: 4,
+  },
+  removePhotoButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
   },
 });
