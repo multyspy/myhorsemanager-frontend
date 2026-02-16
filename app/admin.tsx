@@ -11,6 +11,7 @@ import {
   Modal,
   RefreshControl,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,12 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import Constants from 'expo-constants';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+// Production URL (Railway) - ALWAYS use this for production builds
+const PRODUCTION_API_URL = 'https://web-production-2e659.up.railway.app';
+const isDevelopment = __DEV__;
+const API_URL = isDevelopment 
+  ? (process.env.EXPO_PUBLIC_BACKEND_URL || PRODUCTION_API_URL)
+  : PRODUCTION_API_URL;
 
 interface User {
   id: string;
@@ -46,10 +52,35 @@ interface Stats {
   suppliers: number;
 }
 
+interface Backup {
+  id: string;
+  created_at: string;
+  size_mb: number;
+}
+
+interface SystemMetrics {
+  timestamp: string;
+  database: {
+    storage_size_mb: number;
+    data_size_mb: number;
+    index_size_mb: number;
+    total_size_mb: number;
+    collections_count: number;
+    objects_count: number;
+  };
+  collections: Record<string, { count: number; size_mb: number; avg_doc_size_kb: number }>;
+  storage: {
+    total_documents: number;
+    backups: { count: number; last_backup: string | null; last_backup_type: string | null };
+  };
+  limits: Record<string, { name: string; limit_mb?: number; used_mb?: number; usage_percentage?: number; status: string; description?: string; note?: string }>;
+  alerts: Array<{ type: string; service: string; message: string }>;
+}
+
 export default function AdminScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
   
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,6 +91,13 @@ export default function AdminScreen() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [backups, setBackups] = useState<Backup[]>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   const checkAdmin = useCallback(async () => {
     if (!token) {
@@ -228,6 +266,207 @@ export default function AdminScreen() {
     }
   };
 
+  // System Metrics functions
+  const fetchSystemMetrics = async () => {
+    if (!token) return;
+    setMetricsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/admin/system-metrics`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSystemMetrics(data);
+      }
+    } catch (error) {
+      console.error('Error fetching metrics:', error);
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'critical': return '#F44336';
+      case 'warning': return '#FF9800';
+      case 'ok': return '#4CAF50';
+      default: return '#9E9E9E';
+    }
+  };
+
+  const getUsageBarColor = (percentage: number) => {
+    if (percentage > 90) return '#F44336';
+    if (percentage > 70) return '#FF9800';
+    if (percentage > 50) return '#FFC107';
+    return '#4CAF50';
+  };
+
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const sendTestEmail = async () => {
+    if (!token) return;
+    setSendingEmail(true);
+    try {
+      const response = await fetch(`${API_URL}/api/admin/send-test-email`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        if (Platform.OS === 'web') {
+          window.alert('📧 Email enviado correctamente a multyspy@gmail.com');
+        } else {
+          Alert.alert('Éxito', '📧 Email enviado correctamente');
+        }
+      } else {
+        const error = await response.json();
+        if (Platform.OS === 'web') {
+          window.alert('Error al enviar email: ' + (error.detail || 'Error desconocido'));
+        } else {
+          Alert.alert('Error', error.detail || 'Error al enviar email');
+        }
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Error de conexión al enviar email');
+      } else {
+        Alert.alert('Error', 'Error de conexión');
+      }
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  // Backup functions
+  const fetchBackups = async () => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/api/admin/backups`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBackups(data.backups || []);
+      }
+    } catch (error) {
+      console.error('Error fetching backups:', error);
+    }
+  };
+
+  const createBackup = async () => {
+    if (!token) return;
+    setBackupLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/admin/backup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (Platform.OS === 'web') {
+          window.alert(`Backup creado exitosamente (${data.size_mb} MB)`);
+        } else {
+          Alert.alert(t('success'), `Backup creado exitosamente (${data.size_mb} MB)`);
+        }
+        fetchBackups();
+      } else {
+        const error = await response.json();
+        if (Platform.OS === 'web') {
+          window.alert(error.detail || 'Error creando backup');
+        } else {
+          Alert.alert(t('error'), error.detail || 'Error creando backup');
+        }
+      }
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        window.alert('Error creando backup');
+      } else {
+        Alert.alert(t('error'), 'Error creando backup');
+      }
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const restoreBackup = async (backupId: string, backupDate: string) => {
+    const confirmRestore = () => {
+      setRestoring(true);
+      performRestore(backupId);
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`¿Estás seguro de restaurar el backup del ${new Date(backupDate).toLocaleString()}?\n\nEsto sobrescribirá TODOS los datos actuales.`);
+      if (confirmed) confirmRestore();
+    } else {
+      Alert.alert(
+        'Restaurar Backup',
+        `¿Estás seguro de restaurar el backup del ${new Date(backupDate).toLocaleString()}?\n\nEsto sobrescribirá TODOS los datos actuales.`,
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: 'Restaurar', style: 'destructive', onPress: confirmRestore },
+        ]
+      );
+    }
+  };
+
+  const performRestore = async (backupId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/restore/${backupId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        if (Platform.OS === 'web') {
+          window.alert('Backup restaurado exitosamente');
+        } else {
+          Alert.alert(t('success'), 'Backup restaurado exitosamente');
+        }
+        setShowBackupModal(false);
+        fetchStats();
+        fetchUsers();
+      } else {
+        const error = await response.json();
+        if (Platform.OS === 'web') {
+          window.alert(error.detail || 'Error restaurando backup');
+        } else {
+          Alert.alert(t('error'), error.detail || 'Error restaurando backup');
+        }
+      }
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        window.alert('Error restaurando backup');
+      } else {
+        Alert.alert(t('error'), 'Error restaurando backup');
+      }
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    const performLogout = async () => {
+      await logout();
+      router.replace('/login');
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('¿Estás seguro de cerrar sesión?');
+      if (confirmed) performLogout();
+    } else {
+      Alert.alert(
+        'Cerrar Sesión',
+        '¿Estás seguro de cerrar sesión?',
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: 'Cerrar Sesión', style: 'destructive', onPress: performLogout },
+        ]
+      );
+    }
+  };
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
     try {
@@ -317,9 +556,20 @@ export default function AdminScreen() {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('adminPanel')}</Text>
-        <TouchableOpacity onPress={() => setShowStatsModal(true)}>
-          <Ionicons name="stats-chart" size={24} color="#2E7D32" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity onPress={() => { fetchSystemMetrics(); setShowMetricsModal(true); }}>
+            <Ionicons name="speedometer" size={24} color="#9C27B0" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { fetchBackups(); setShowBackupModal(true); }}>
+            <Ionicons name="cloud-download" size={24} color="#2196F3" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowStatsModal(true)}>
+            <Ionicons name="stats-chart" size={24} color="#2E7D32" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout}>
+            <Ionicons name="log-out" size={24} color="#F44336" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Quick Stats */}
@@ -382,6 +632,7 @@ export default function AdminScreen() {
       <Modal visible={showUserModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <ScrollView showsVerticalScrollIndicator={false}>
             {selectedUser && (
               <>
                 <View style={styles.modalHeader}>
@@ -461,6 +712,7 @@ export default function AdminScreen() {
                 </View>
               </>
             )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -476,6 +728,7 @@ export default function AdminScreen() {
               </TouchableOpacity>
             </View>
 
+            <ScrollView showsVerticalScrollIndicator={false}>
             {stats && (
               <View style={styles.statsGrid}>
                 <View style={styles.statsCard}>
@@ -515,6 +768,291 @@ export default function AdminScreen() {
                   <Text style={styles.statsCardValue}>{stats.palmares}</Text>
                   <Text style={styles.statsCardLabel}>{t('totalAchievements')}</Text>
                 </View>
+              </View>
+            )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Backup Modal */}
+      <Modal visible={showBackupModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Copias de Seguridad</Text>
+              <TouchableOpacity onPress={() => setShowBackupModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.createBackupButton, backupLoading && { opacity: 0.7 }]}
+              onPress={createBackup}
+              disabled={backupLoading}
+            >
+              {backupLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload" size={24} color="#fff" />
+                  <Text style={styles.createBackupButtonText}>Crear Backup Ahora</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.backupSectionTitle}>Backups Disponibles (últimos 7 días)</Text>
+
+            <ScrollView style={{ maxHeight: 300 }}>
+              {backups.length === 0 ? (
+                <View style={styles.emptyBackups}>
+                  <Ionicons name="cloud-offline" size={48} color="#ccc" />
+                  <Text style={styles.emptyBackupsText}>No hay backups disponibles</Text>
+                  <Text style={[styles.emptyBackupsText, { fontSize: 12, marginTop: 8 }]}>
+                    Pulsa "Crear Backup Ahora" para crear tu primera copia de seguridad
+                  </Text>
+                </View>
+              ) : (
+                backups.map((backup: any) => (
+                  <View key={backup.id} style={styles.backupItem}>
+                    <View style={styles.backupInfo}>
+                      <Ionicons 
+                        name={backup.type === 'automatic' ? 'time' : 'document'} 
+                        size={24} 
+                        color={backup.type === 'automatic' ? '#4CAF50' : '#2196F3'} 
+                      />
+                      <View style={{ marginLeft: 12 }}>
+                        <Text style={styles.backupDate}>
+                          {new Date(backup.created_at).toLocaleString('es-ES')}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={styles.backupSize}>{backup.size_mb} MB</Text>
+                          <Text style={[styles.backupSize, { 
+                            color: backup.type === 'automatic' ? '#4CAF50' : '#2196F3',
+                            fontWeight: '500'
+                          }]}>
+                            {backup.type === 'automatic' ? '⏰ Auto' : '✋ Manual'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.restoreButton}
+                      onPress={() => restoreBackup(backup.id, backup.created_at)}
+                      disabled={restoring}
+                    >
+                      {restoring ? (
+                        <ActivityIndicator size="small" color="#F44336" />
+                      ) : (
+                        <>
+                          <Ionicons name="refresh" size={18} color="#F44336" />
+                          <Text style={styles.restoreButtonText}>Restaurar</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <Text style={[styles.backupSectionTitle, { fontSize: 12, color: '#666', marginTop: 16 }]}>
+              ⏰ Backup automático diario a las 3:00 AM
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* System Metrics Modal */}
+      <Modal visible={showMetricsModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📊 Monitor del Sistema</Text>
+              <TouchableOpacity onPress={() => setShowMetricsModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {metricsLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#9C27B0" />
+                <Text style={{ marginTop: 12, color: '#666' }}>Cargando métricas...</Text>
+              </View>
+            ) : systemMetrics ? (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Alerts Section */}
+                {systemMetrics.alerts.length > 0 && (
+                  <View style={styles.alertsSection}>
+                    {systemMetrics.alerts.map((alert, index) => (
+                      <View key={index} style={[styles.alertItem, { 
+                        backgroundColor: alert.type === 'critical' ? '#FFEBEE' : '#FFF3E0',
+                        borderLeftColor: alert.type === 'critical' ? '#F44336' : '#FF9800'
+                      }]}>
+                        <Ionicons 
+                          name={alert.type === 'critical' ? 'warning' : 'alert-circle'} 
+                          size={20} 
+                          color={alert.type === 'critical' ? '#F44336' : '#FF9800'} 
+                        />
+                        <View style={{ flex: 1, marginLeft: 8 }}>
+                          <Text style={styles.alertService}>{alert.service}</Text>
+                          <Text style={styles.alertMessage}>{alert.message}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* MongoDB Atlas Usage */}
+                <View style={styles.metricsCard}>
+                  <View style={styles.metricsCardHeader}>
+                    <Ionicons name="server" size={24} color="#4CAF50" />
+                    <Text style={styles.metricsCardTitle}>MongoDB Atlas</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(systemMetrics.limits.mongodb_atlas?.status || 'ok') }]}>
+                      <Text style={styles.statusBadgeText}>
+                        {systemMetrics.limits.mongodb_atlas?.status?.toUpperCase() || 'OK'}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.usageBar}>
+                    <View style={[styles.usageBarFill, { 
+                      width: `${Math.min(systemMetrics.limits.mongodb_atlas?.usage_percentage || 0, 100)}%`,
+                      backgroundColor: getUsageBarColor(systemMetrics.limits.mongodb_atlas?.usage_percentage || 0)
+                    }]} />
+                  </View>
+                  
+                  <View style={styles.usageStats}>
+                    <Text style={styles.usageText}>
+                      {systemMetrics.limits.mongodb_atlas?.used_mb || 0} MB / {systemMetrics.limits.mongodb_atlas?.limit_mb || 512} MB
+                    </Text>
+                    <Text style={[styles.usagePercentage, { 
+                      color: getUsageBarColor(systemMetrics.limits.mongodb_atlas?.usage_percentage || 0) 
+                    }]}>
+                      {systemMetrics.limits.mongodb_atlas?.usage_percentage || 0}%
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Database Details */}
+                <View style={styles.metricsCard}>
+                  <Text style={styles.metricsCardTitle}>📁 Detalles de la Base de Datos</Text>
+                  <View style={styles.metricsRow}>
+                    <Text style={styles.metricsLabel}>Tamaño de datos:</Text>
+                    <Text style={styles.metricsValue}>{systemMetrics.database.data_size_mb} MB</Text>
+                  </View>
+                  <View style={styles.metricsRow}>
+                    <Text style={styles.metricsLabel}>Tamaño de índices:</Text>
+                    <Text style={styles.metricsValue}>{systemMetrics.database.index_size_mb} MB</Text>
+                  </View>
+                  <View style={styles.metricsRow}>
+                    <Text style={styles.metricsLabel}>Total documentos:</Text>
+                    <Text style={styles.metricsValue}>{systemMetrics.storage.total_documents}</Text>
+                  </View>
+                  <View style={styles.metricsRow}>
+                    <Text style={styles.metricsLabel}>Colecciones:</Text>
+                    <Text style={styles.metricsValue}>{systemMetrics.database.collections_count}</Text>
+                  </View>
+                </View>
+
+                {/* Collections Breakdown */}
+                <View style={styles.metricsCard}>
+                  <Text style={styles.metricsCardTitle}>📊 Uso por Colección</Text>
+                  {Object.entries(systemMetrics.collections)
+                    .filter(([name]) => !['backups', 'backup_parts', 'metrics_history'].includes(name))
+                    .sort((a, b) => (b[1].size_mb || 0) - (a[1].size_mb || 0))
+                    .map(([name, data]) => (
+                      <View key={name} style={styles.collectionRow}>
+                        <View style={styles.collectionInfo}>
+                          <Text style={styles.collectionName}>{name}</Text>
+                          <Text style={styles.collectionCount}>{data.count} docs</Text>
+                        </View>
+                        <Text style={styles.collectionSize}>{data.size_mb} MB</Text>
+                      </View>
+                    ))}
+                </View>
+
+                {/* Other Services */}
+                <View style={styles.metricsCard}>
+                  <Text style={styles.metricsCardTitle}>🔧 Otros Servicios</Text>
+                  
+                  <View style={styles.serviceRow}>
+                    <Ionicons name="train" size={20} color="#7C4DFF" />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.serviceName}>Railway (Backend)</Text>
+                      <Text style={styles.serviceNote}>{systemMetrics.limits.railway?.note}</Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: '#4CAF50' }]}>
+                      <Text style={styles.statusBadgeText}>OK</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.serviceRow}>
+                    <Ionicons name="phone-portrait" size={20} color="#00BCD4" />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.serviceName}>Expo EAS (Builds)</Text>
+                      <Text style={styles.serviceNote}>{systemMetrics.limits.expo_eas?.note}</Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: '#4CAF50' }]}>
+                      <Text style={styles.statusBadgeText}>OK</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Last Backup Info */}
+                <View style={styles.metricsCard}>
+                  <Text style={styles.metricsCardTitle}>💾 Último Backup</Text>
+                  {systemMetrics.storage.backups.last_backup ? (
+                    <>
+                      <View style={styles.metricsRow}>
+                        <Text style={styles.metricsLabel}>Fecha:</Text>
+                        <Text style={styles.metricsValue}>
+                          {new Date(systemMetrics.storage.backups.last_backup).toLocaleString('es-ES')}
+                        </Text>
+                      </View>
+                      <View style={styles.metricsRow}>
+                        <Text style={styles.metricsLabel}>Tipo:</Text>
+                        <Text style={styles.metricsValue}>
+                          {systemMetrics.storage.backups.last_backup_type === 'automatic' ? '⏰ Automático' : '✋ Manual'}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={{ color: '#999', fontStyle: 'italic' }}>No hay backups aún</Text>
+                  )}
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.refreshMetricsButton}
+                  onPress={fetchSystemMetrics}
+                >
+                  <Ionicons name="refresh" size={20} color="#fff" />
+                  <Text style={styles.refreshMetricsButtonText}>Actualizar Métricas</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.refreshMetricsButton, { backgroundColor: '#FF5722', marginTop: 8 }]}
+                  onPress={sendTestEmail}
+                  disabled={sendingEmail}
+                >
+                  {sendingEmail ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="mail" size={20} color="#fff" />
+                      <Text style={styles.refreshMetricsButtonText}>Enviar Informe por Email</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <Text style={{ textAlign: 'center', color: '#999', fontSize: 11, marginTop: 12, marginBottom: 16 }}>
+                  📧 Email diario automático a las 8:00 AM{'\n'}
+                  Última actualización: {new Date(systemMetrics.timestamp).toLocaleString('es-ES')}
+                </Text>
+              </ScrollView>
+            ) : (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <Ionicons name="alert-circle" size={48} color="#ccc" />
+                <Text style={{ marginTop: 12, color: '#666' }}>Error al cargar métricas</Text>
               </View>
             )}
           </View>
@@ -860,5 +1398,221 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#999',
     marginTop: 4,
+  },
+  createBackupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2E7D32',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 8,
+  },
+  createBackupButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backupSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  emptyBackups: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyBackupsText: {
+    color: '#999',
+    marginTop: 12,
+  },
+  backupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f9f9f9',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  backupInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backupDate: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
+  backupSize: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  restoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F44336',
+    gap: 4,
+  },
+  restoreButtonText: {
+    color: '#F44336',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // Metrics Modal Styles
+  alertsSection: {
+    marginBottom: 16,
+  },
+  alertItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+  },
+  alertService: {
+    fontWeight: '600',
+    color: '#333',
+    fontSize: 14,
+  },
+  alertMessage: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  metricsCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  metricsCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  metricsCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  statusBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  usageBar: {
+    height: 12,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  usageBarFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  usageStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  usageText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  usagePercentage: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  metricsLabel: {
+    color: '#666',
+    fontSize: 14,
+  },
+  metricsValue: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  collectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  collectionInfo: {
+    flex: 1,
+  },
+  collectionName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    textTransform: 'capitalize',
+  },
+  collectionCount: {
+    fontSize: 12,
+    color: '#999',
+  },
+  collectionSize: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  serviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  serviceName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  serviceNote: {
+    fontSize: 11,
+    color: '#999',
+    marginTop: 2,
+  },
+  refreshMetricsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#9C27B0',
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 16,
+    gap: 8,
+  },
+  refreshMetricsButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
