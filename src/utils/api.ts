@@ -1,10 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Production URL (Railway)
+// Production URL (Railway) - ALWAYS use this for production builds
 const PRODUCTION_API_URL = 'https://web-production-2e659.up.railway.app';
 
-// Use production URL for App Store builds, or env variable for development
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || PRODUCTION_API_URL;
+// Check if running in development mode
+const isDevelopment = __DEV__ || Constants.expoConfig?.extra?.environment === 'development';
+
+// In production builds, ALWAYS use Railway URL. In development, use env variable if available.
+const API_URL = isDevelopment 
+  ? (process.env.EXPO_PUBLIC_BACKEND_URL || PRODUCTION_API_URL)
+  : PRODUCTION_API_URL;
 
 class ApiService {
   private token: string | null = null;
