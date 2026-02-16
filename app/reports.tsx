@@ -65,39 +65,83 @@ interface BudgetStatus {
   over_budget: boolean;
 }
 
-const MONTH_NAMES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-];
+// Month names are now handled via translation keys
 
 const HORSE_CATEGORY_COLORS: Record<string, string> = {
-  pupilaje: '#4CAF50',
-  herrador: '#FF9800',
-  veterinario: '#F44336',
-  proveedores: '#2196F3',
-  otros_propietarios: '#9C27B0',
-  alimentacion: '#795548',
-  equipo: '#607D8B',
-  transporte: '#00BCD4',
-  otros: '#9E9E9E',
+  pupilaje: '#2E7D32',
+  herrador: '#F57C00',
+  veterinario: '#C62828',
+  dentista: '#E91E63',
+  vacunas: '#8E24AA',
+  desparasitacion: '#5E35B1',
+  fisioterapia: '#00ACC1',
+  proveedores: '#1565C0',
+  otros_propietarios: '#3949AB',
+  alimentacion: '#6D4C41',
+  equipo: '#546E7A',
+  transporte: '#00796B',
+  otros: '#757575',
 };
 
 const RIDER_CATEGORY_COLORS: Record<string, string> = {
   equipamiento: '#E91E63',
   formacion: '#3F51B5',
   competiciones: '#FFC107',
-  licencias: '#009688',
-  seguros: '#673AB7',
-  transporte: '#00BCD4',
-  alimentacion: '#795548',
+  licencias: '#00796B',
+  seguros: '#5E35B1',
+  transporte: '#00ACC1',
+  alimentacion: '#6D4C41',
   fisioterapia: '#8BC34A',
-  otros: '#9E9E9E',
+  otros: '#757575',
+};
+
+// Category translation keys mapping
+const CATEGORY_TRANSLATION_KEYS: Record<string, string> = {
+  pupilaje: 'categories.boarding',
+  herrador: 'categories.farrier',
+  veterinario: 'categories.veterinary',
+  dentista: 'categories.dentista',
+  vacunas: 'categories.vacunas',
+  desparasitacion: 'categories.desparasitacion',
+  fisioterapia: 'categories.physiotherapy',
+  proveedores: 'categories.suppliers',
+  otros_propietarios: 'categories.otherOwners',
+  alimentacion: 'categories.feed',
+  equipo: 'categories.equipment',
+  transporte: 'categories.transport',
+  otros: 'categories.other',
+  equipamiento: 'categories.equipment',
+  formacion: 'categories.training',
+  competiciones: 'categories.competitions',
+  licencias: 'categories.licenses',
+  seguros: 'categories.insurance',
 };
 
 export default function ReportsScreen() {
   const { token, isLoading: authLoading } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
+  
+  // Helper function to get month names based on current language
+  const getMonthName = (monthIndex: number) => {
+    const monthKeys = ['january', 'february', 'march', 'april', 'may', 'june',
+                       'july', 'august', 'september', 'october', 'november', 'december'];
+    return t(monthKeys[monthIndex]);
+  };
+
+  // Helper function to translate category names
+  const getCategoryName = (categoryKey: string, backendName: string) => {
+    const translationKey = CATEGORY_TRANSLATION_KEYS[categoryKey];
+    if (translationKey) {
+      const translated = t(translationKey);
+      // Si la traducción existe y no es la misma clave, usarla
+      if (translated !== translationKey) {
+        return translated;
+      }
+    }
+    // Fallback al nombre del backend
+    return backendName;
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [horses, setHorses] = useState<Horse[]>([]);
   const [riders, setRiders] = useState<Rider[]>([]);
@@ -149,7 +193,7 @@ export default function ReportsScreen() {
   };
 
   const formatDisplayDate = (dateStr: string) => {
-    if (!dateStr) return 'Seleccionar';
+    if (!dateStr) return t('select');
     const [year, month, day] = dateStr.split('-');
     return `${day}/${month}/${year}`;
   };
@@ -277,10 +321,10 @@ export default function ReportsScreen() {
   const getEntityName = (entityId: string) => {
     if (entityType === 'horse') {
       const horse = horses.find(h => h.id === entityId);
-      return horse?.name || 'Todos';
+      return horse?.name || t('allEntities');
     }
     const rider = riders.find(r => r.id === entityId);
-    return rider?.name || 'Todos';
+    return rider?.name || t('allEntities');
   };
 
   const clearFilters = () => {
@@ -308,20 +352,28 @@ export default function ReportsScreen() {
           link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
-          Alert.alert('Éxito', 'Archivo CSV descargado');
+          Alert.alert(t('success'), t('csvDownloaded'));
         } else {
-          // For mobile
-          if (await Sharing.isAvailableAsync()) {
+          // For mobile - use Share API as primary method
+          try {
             const fileUri = FileSystem.documentDirectory + data.filename;
-            await FileSystem.writeAsStringAsync(fileUri, data.data, {
-              encoding: FileSystem.EncodingType.UTF8
-            });
-            await Sharing.shareAsync(fileUri, {
-              mimeType: 'text/csv',
-              dialogTitle: 'Exportar gastos a CSV'
-            });
-          } else {
-            // Fallback to share
+            await FileSystem.writeAsStringAsync(fileUri, data.data);
+            
+            if (await Sharing.isAvailableAsync()) {
+              await Sharing.shareAsync(fileUri, {
+                mimeType: 'text/csv',
+                dialogTitle: t('exportExpensesCsv')
+              });
+            } else {
+              // Fallback to Share
+              await Share.share({
+                message: data.data,
+                title: data.filename,
+              });
+            }
+          } catch (fileError) {
+            console.log('FileSystem error, using Share fallback:', fileError);
+            // Fallback if FileSystem fails
             await Share.share({
               message: data.data,
               title: data.filename,
@@ -329,17 +381,17 @@ export default function ReportsScreen() {
           }
         }
       } else {
-        Alert.alert('Error', 'No se pudo obtener los datos para exportar');
+        Alert.alert(t('error'), t('couldNotGetData'));
       }
     } catch (error) {
       console.error('Error exporting:', error);
-      Alert.alert('Error', 'No se pudo exportar los datos');
+      Alert.alert(t('error'), t('couldNotExportData'));
     }
   };
 
   const saveBudget = async () => {
     if (!budgetAmount || parseFloat(budgetAmount) <= 0) {
-      Alert.alert('Error', 'Ingresa un monto válido');
+      Alert.alert(t('error'), t('enterValidAmount'));
       return;
     }
 
@@ -357,10 +409,10 @@ export default function ReportsScreen() {
         setBudgetModalVisible(false);
         setBudgetAmount('');
         fetchBudgetStatus();
-        Alert.alert('Éxito', 'Presupuesto guardado correctamente');
+        Alert.alert(t('success'), t('budgetSaved'));
       }
     } catch (error) {
-      Alert.alert('Error', 'No se pudo guardar el presupuesto');
+      Alert.alert(t('error'), t('couldNotSaveBudget'));
     }
   };
 
@@ -391,14 +443,14 @@ export default function ReportsScreen() {
     return (
       <View>
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Gasto Total</Text>
+          <Text style={styles.totalLabel}>{t('totalExpense')}</Text>
           <Text style={styles.totalAmount}>{formatAmount(summaryData.total)}</Text>
-          <Text style={styles.totalCount}>{summaryData.count} gastos registrados</Text>
+          <Text style={styles.totalCount}>{summaryData.count} {t('expensesRegistered')}</Text>
         </View>
 
         {pieData.length > 0 && (
           <View style={styles.chartContainer}>
-            <Text style={styles.sectionTitle}>Distribución por Categoría</Text>
+            <Text style={styles.sectionTitle}>{t('distributionByCategory')}</Text>
             <View style={styles.pieContainer}>
               <PieChart
                 data={pieData}
@@ -415,10 +467,10 @@ export default function ReportsScreen() {
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>Detalle por Categoría</Text>
+        <Text style={styles.sectionTitle}>{t('detailByCategory')}</Text>
         {categories.length === 0 ? (
           <View style={styles.emptyCategory}>
-            <Text style={styles.emptyCategoryText}>No hay datos para mostrar</Text>
+            <Text style={styles.emptyCategoryText}>{t('noDataToShow')}</Text>
           </View>
         ) : (
           categories.map(([key, value]: [string, any]) => {
@@ -427,7 +479,7 @@ export default function ReportsScreen() {
               <View key={key} style={styles.categoryCard}>
                 <View style={styles.categoryHeader}>
                   <View style={[styles.categoryDot, { backgroundColor: categoryColors[key] || '#999' }]} />
-                  <Text style={styles.categoryName}>{value.name}</Text>
+                  <Text style={styles.categoryName}>{getCategoryName(key, value.name)}</Text>
                   <Text style={styles.categoryAmount}>{formatAmount(value.total)}</Text>
                 </View>
                 <View style={styles.progressBar}>
@@ -438,7 +490,7 @@ export default function ReportsScreen() {
                     ]}
                   />
                 </View>
-                <Text style={styles.categoryCount}>{value.count} gastos ({percentage.toFixed(1)}%)</Text>
+                <Text style={styles.categoryCount}>{value.count} {t('expenses').toLowerCase()} ({percentage.toFixed(1)}%)</Text>
               </View>
             );
           })
@@ -446,7 +498,7 @@ export default function ReportsScreen() {
 
         <TouchableOpacity style={styles.exportButton} onPress={exportData}>
           <Ionicons name="download-outline" size={20} color="#fff" />
-          <Text style={styles.exportButtonText}>Exportar a CSV</Text>
+          <Text style={styles.exportButtonText}>{t('exportToCsv')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -461,14 +513,14 @@ export default function ReportsScreen() {
     return (
       <View>
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Gasto Total</Text>
+          <Text style={styles.totalLabel}>{t('totalExpense')}</Text>
           <Text style={styles.totalAmount}>{formatAmount(grandTotal)}</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Por {entityType === 'horse' ? 'Caballo' : 'Jinete'}</Text>
+        <Text style={styles.sectionTitle}>{entityType === 'horse' ? t('byHorseTab') : t('byRiderTab')}</Text>
         {!entityList || entityList.length === 0 ? (
           <View style={styles.emptyCategory}>
-            <Text style={styles.emptyCategoryText}>No hay datos para mostrar</Text>
+            <Text style={styles.emptyCategoryText}>{t('noDataToShow')}</Text>
           </View>
         ) : (
           entityList.map((entity: EntityReport) => {
@@ -482,7 +534,7 @@ export default function ReportsScreen() {
                   </View>
                   <View style={styles.entityInfo}>
                     <Text style={styles.entityName}>{name}</Text>
-                    <Text style={styles.entityCount}>{entity.count} gastos</Text>
+                    <Text style={styles.entityCount}>{entity.count} {t('expenses').toLowerCase()}</Text>
                   </View>
                   <Text style={styles.entityAmount}>{formatAmount(entity.total)}</Text>
                 </View>
@@ -502,7 +554,7 @@ export default function ReportsScreen() {
                       <View key={cat} style={styles.miniCategory}>
                         <View style={[styles.miniDot, { backgroundColor: categoryColors[cat] || '#999' }]} />
                         <Text style={styles.miniCategoryText}>
-                          {val.name}: {formatAmount(val.total)}
+                          {getCategoryName(cat, val.name)}: {formatAmount(val.total)}
                         </Text>
                       </View>
                     ))}
@@ -544,22 +596,22 @@ export default function ReportsScreen() {
         >
           <Ionicons name="filter" size={18} color="#666" />
           <Text style={styles.entityFilterText}>
-            {selectedEntityId ? getEntityName(selectedEntityId) : `Todos los ${entityType === 'horse' ? 'caballos' : 'jinetes'}`}
+            {selectedEntityId ? getEntityName(selectedEntityId) : `${t('allEntities')} ${entityType === 'horse' ? t('horses').toLowerCase() : t('riders').toLowerCase()}`}
           </Text>
           <Ionicons name="chevron-down" size={18} color="#666" />
         </TouchableOpacity>
 
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total {selectedYear}</Text>
+          <Text style={styles.totalLabel}>{t('total')} {selectedYear}</Text>
           <Text style={styles.totalAmount}>{formatAmount(monthlyData.total)}</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Gastos Mensuales</Text>
+        <Text style={styles.sectionTitle}>{t('monthlyExpenses')}</Text>
         {monthlyData.months.map((month: MonthlyData, index: number) => {
           const barWidth = maxMonthTotal > 0 ? (month.total / maxMonthTotal) * 100 : 0;
           return (
             <View key={month.month} style={styles.monthRow}>
-              <Text style={styles.monthName}>{MONTH_NAMES[index]}</Text>
+              <Text style={styles.monthName}>{getMonthName(index)}</Text>
               <View style={styles.monthBarContainer}>
                 <View
                   style={[
@@ -583,7 +635,7 @@ export default function ReportsScreen() {
     return (
       <View>
         <View style={styles.budgetHeader}>
-          <Text style={styles.budgetTitle}>Presupuesto {MONTH_NAMES[month - 1]} {year}</Text>
+          <Text style={styles.budgetTitle}>{t('budget')} {getMonthName(month - 1)} {year}</Text>
           <TouchableOpacity
             style={styles.addBudgetButton}
             onPress={() => setBudgetModalVisible(true)}
@@ -595,18 +647,18 @@ export default function ReportsScreen() {
         {!budgetStatus || budgetStatus.status?.length === 0 ? (
           <View style={styles.emptyBudget}>
             <Ionicons name="wallet-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyBudgetText}>No hay presupuestos configurados</Text>
-            <Text style={styles.emptyBudgetSubtext}>Toca + para crear uno</Text>
+            <Text style={styles.emptyBudgetText}>{t('noBudget')}</Text>
+            <Text style={styles.emptyBudgetSubtext}>{t('tapToCreateBudget')}</Text>
           </View>
         ) : (
           <>
             <View style={styles.budgetSummaryCard}>
               <View style={styles.budgetSummaryRow}>
-                <Text style={styles.budgetSummaryLabel}>Presupuestado:</Text>
+                <Text style={styles.budgetSummaryLabel}>{t('budgeted')}:</Text>
                 <Text style={styles.budgetSummaryValue}>{formatAmount(budgetStatus.total_budgeted)}</Text>
               </View>
               <View style={styles.budgetSummaryRow}>
-                <Text style={styles.budgetSummaryLabel}>Gastado:</Text>
+                <Text style={styles.budgetSummaryLabel}>{t('spent')}:</Text>
                 <Text style={[
                   styles.budgetSummaryValue,
                   budgetStatus.total_actual > budgetStatus.total_budgeted && styles.overBudgetText
@@ -615,7 +667,7 @@ export default function ReportsScreen() {
                 </Text>
               </View>
               <View style={styles.budgetSummaryRow}>
-                <Text style={styles.budgetSummaryLabel}>Disponible:</Text>
+                <Text style={styles.budgetSummaryLabel}>{t('remaining')}:</Text>
                 <Text style={[
                   styles.budgetSummaryValue,
                   budgetStatus.total_budgeted - budgetStatus.total_actual < 0 && styles.overBudgetText
@@ -633,11 +685,11 @@ export default function ReportsScreen() {
                       ? (entityType === 'horse' 
                           ? HORSE_CATEGORY_COLORS[item.budget.category] 
                           : item.budget.category)
-                      : 'Presupuesto Global'}
+                      : t('globalBudget')}
                   </Text>
                   {item.over_budget && (
                     <View style={styles.overBudgetBadge}>
-                      <Text style={styles.overBudgetBadgeText}>Excedido</Text>
+                      <Text style={styles.overBudgetBadgeText}>{t('exceeded')}</Text>
                     </View>
                   )}
                 </View>
@@ -692,7 +744,7 @@ export default function ReportsScreen() {
           >
             <Ionicons name="fitness" size={18} color={entityType === 'horse' ? '#fff' : '#666'} />
             <Text style={[styles.entityTypeText, entityType === 'horse' && styles.entityTypeTextActive]}>
-              Caballos
+              {t('horses')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -701,7 +753,7 @@ export default function ReportsScreen() {
           >
             <Ionicons name="person" size={18} color={entityType === 'rider' ? '#fff' : '#666'} />
             <Text style={[styles.entityTypeText, entityType === 'rider' && styles.entityTypeTextActive]}>
-              Jinetes
+              {t('riders')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -710,7 +762,7 @@ export default function ReportsScreen() {
         {selectedTab !== 'monthly' && selectedTab !== 'budget' && (
           <View style={styles.filterContainer}>
             <View style={styles.dateInputContainer}>
-              <Text style={styles.filterLabel}>Desde</Text>
+              <Text style={styles.filterLabel}>{t('from')}</Text>
               {Platform.OS === 'web' ? (
                 <View style={styles.webDateInputWrapper}>
                   <Ionicons name="calendar-outline" size={18} color="#666" />
@@ -737,7 +789,7 @@ export default function ReportsScreen() {
                   >
                     <Ionicons name="calendar-outline" size={18} color="#666" />
                     <Text style={styles.dateSelectorText}>
-                      {startDate ? formatDisplayDate(startDate) : 'Seleccionar'}
+                      {startDate ? formatDisplayDate(startDate) : t('select')}
                     </Text>
                   </TouchableOpacity>
                   {showStartDatePicker && (
@@ -752,7 +804,7 @@ export default function ReportsScreen() {
               )}
             </View>
             <View style={styles.dateInputContainer}>
-              <Text style={styles.filterLabel}>Hasta</Text>
+              <Text style={styles.filterLabel}>{t('to')}</Text>
               {Platform.OS === 'web' ? (
                 <View style={styles.webDateInputWrapper}>
                   <Ionicons name="calendar-outline" size={18} color="#666" />
@@ -808,7 +860,7 @@ export default function ReportsScreen() {
             onPress={() => setSelectedTab('summary')}
           >
             <Text style={[styles.tabText, selectedTab === 'summary' && styles.tabTextActive]}>
-              Resumen
+              {t('summary')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -816,7 +868,7 @@ export default function ReportsScreen() {
             onPress={() => setSelectedTab('byEntity')}
           >
             <Text style={[styles.tabText, selectedTab === 'byEntity' && styles.tabTextActive]}>
-              Por {entityType === 'horse' ? 'Caballo' : 'Jinete'}
+              {entityType === 'horse' ? t('byHorseTab') : t('byRiderTab')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -824,7 +876,7 @@ export default function ReportsScreen() {
             onPress={() => setSelectedTab('monthly')}
           >
             <Text style={[styles.tabText, selectedTab === 'monthly' && styles.tabTextActive]}>
-              Mensual
+              {t('monthly')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -832,7 +884,7 @@ export default function ReportsScreen() {
             onPress={() => setSelectedTab('budget')}
           >
             <Text style={[styles.tabText, selectedTab === 'budget' && styles.tabTextActive]}>
-              Presupuesto
+              {t('budget')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -857,7 +909,7 @@ export default function ReportsScreen() {
           onPress={() => setShowEntitySelector(false)}
         >
           <View style={styles.selectorModal}>
-            <Text style={styles.selectorTitle}>Filtrar por {entityType === 'horse' ? 'Caballo' : 'Jinete'}</Text>
+            <Text style={styles.selectorTitle}>{t('filterByEntity')} {entityType === 'horse' ? t('horse') : t('rider')}</Text>
             <TouchableOpacity
               style={[styles.selectorItem, !selectedEntityId && styles.selectorItemSelected]}
               onPress={() => {
@@ -865,7 +917,7 @@ export default function ReportsScreen() {
                 setShowEntitySelector(false);
               }}
             >
-              <Text style={styles.selectorItemText}>Todos</Text>
+              <Text style={styles.selectorItemText}>{t('allEntities')}</Text>
               {!selectedEntityId && <Ionicons name="checkmark" size={20} color="#2E7D32" />}
             </TouchableOpacity>
             <FlatList
@@ -903,9 +955,9 @@ export default function ReportsScreen() {
           onPress={() => setBudgetModalVisible(false)}
         >
           <View style={styles.budgetModal}>
-            <Text style={styles.selectorTitle}>Nuevo Presupuesto</Text>
+            <Text style={styles.selectorTitle}>{t('newBudget')}</Text>
             
-            <Text style={styles.budgetModalLabel}>Monto (€)</Text>
+            <Text style={styles.budgetModalLabel}>{t('amount')} (€)</Text>
             <TextInput
               style={styles.budgetModalInput}
               value={budgetAmount}
@@ -920,13 +972,13 @@ export default function ReportsScreen() {
                 style={styles.budgetModalCancel}
                 onPress={() => setBudgetModalVisible(false)}
               >
-                <Text style={styles.budgetModalCancelText}>Cancelar</Text>
+                <Text style={styles.budgetModalCancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.budgetModalSave}
                 onPress={saveBudget}
               >
-                <Text style={styles.budgetModalSaveText}>Guardar</Text>
+                <Text style={styles.budgetModalSaveText}>{t('save')}</Text>
               </TouchableOpacity>
             </View>
           </View>

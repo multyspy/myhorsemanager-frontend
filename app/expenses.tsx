@@ -65,14 +65,18 @@ interface CategoryInfo {
 }
 
 const HORSE_CATEGORY_ICONS: Record<string, string> = {
-  pupilaje: 'home',
-  herrador: 'hammer',
-  veterinario: 'medkit',
-  proveedores: 'cart',
-  otros_propietarios: 'people',
-  alimentacion: 'restaurant',
-  equipo: 'fitness',
-  transporte: 'car',
+  pupilaje: 'business',           // Centro ecuestre / instalación
+  herrador: 'construct',          // Servicio de herraje
+  veterinario: 'medkit',          // Atención médica
+  dentista: 'happy',              // Odontología equina (sonrisa/dientes)
+  vacunas: 'fitness',             // Vacunación preventiva
+  desparasitacion: 'shield-checkmark', // Protección antiparasitaria
+  fisioterapia: 'accessibility',  // Recuperación y movilidad
+  proveedores: 'cube',            // Suministros y compras
+  otros_propietarios: 'people',   // Copropietarios
+  alimentacion: 'leaf',           // Pienso y nutrición
+  equipo: 'ribbon',               // Material ecuestre
+  transporte: 'bus',              // Traslado y viajes
   otros: 'ellipsis-horizontal',
 };
 
@@ -80,36 +84,40 @@ const RIDER_CATEGORY_ICONS: Record<string, string> = {
   equipamiento: 'shirt',
   formacion: 'school',
   competiciones: 'trophy',
-  licencias: 'document',
+  licencias: 'document-text',
   seguros: 'shield-checkmark',
-  transporte: 'car',
-  alimentacion: 'restaurant',
-  fisioterapia: 'body',
+  transporte: 'bus',
+  alimentacion: 'leaf',
+  fisioterapia: 'accessibility',
   otros: 'ellipsis-horizontal',
 };
 
 const HORSE_CATEGORY_COLORS: Record<string, string> = {
-  pupilaje: '#4CAF50',
-  herrador: '#FF9800',
-  veterinario: '#F44336',
-  proveedores: '#2196F3',
-  otros_propietarios: '#9C27B0',
-  alimentacion: '#795548',
-  equipo: '#607D8B',
-  transporte: '#00BCD4',
-  otros: '#9E9E9E',
+  pupilaje: '#2E7D32',            // Verde oscuro - Centro ecuestre
+  herrador: '#F57C00',            // Naranja - Herraje
+  veterinario: '#C62828',         // Rojo oscuro - Atención médica
+  dentista: '#E91E63',            // Rosa - Odontología
+  vacunas: '#8E24AA',             // Púrpura - Vacunación
+  desparasitacion: '#5E35B1',     // Violeta - Antiparasitario
+  fisioterapia: '#00ACC1',        // Cyan - Recuperación
+  proveedores: '#1565C0',         // Azul - Suministros
+  otros_propietarios: '#3949AB',  // Índigo - Copropietarios
+  alimentacion: '#6D4C41',        // Marrón - Nutrición
+  equipo: '#546E7A',              // Gris azulado - Material
+  transporte: '#00796B',          // Teal - Traslado
+  otros: '#757575',               // Gris
 };
 
 const RIDER_CATEGORY_COLORS: Record<string, string> = {
-  equipamiento: '#E91E63',
-  formacion: '#3F51B5',
-  competiciones: '#FFC107',
-  licencias: '#009688',
-  seguros: '#673AB7',
-  transporte: '#00BCD4',
-  alimentacion: '#795548',
-  fisioterapia: '#8BC34A',
-  otros: '#9E9E9E',
+  equipamiento: '#E91E63',        // Rosa
+  formacion: '#3F51B5',           // Índigo
+  competiciones: '#FFC107',       // Amarillo
+  licencias: '#00796B',           // Teal
+  seguros: '#5E35B1',             // Violeta
+  transporte: '#00ACC1',          // Cyan
+  alimentacion: '#6D4C41',        // Marrón
+  fisioterapia: '#8BC34A',        // Verde claro
+  otros: '#757575',               // Gris
 };
 
 export default function ExpensesScreen() {
@@ -136,7 +144,9 @@ export default function ExpensesScreen() {
       licencias: 'categories.licenses',
       seguros: 'categories.insurance',
       fisioterapia: 'categories.physiotherapy',
-      dentista: 'categories.dentist',
+      dentista: 'categories.dentista',
+      vacunas: 'categories.vacunas',
+      desparasitacion: 'categories.desparasitacion',
     };
     return t(categoryKeys[category] || category);
   };
@@ -170,6 +180,8 @@ export default function ExpensesScreen() {
   const [showEntitySelector, setShowEntitySelector] = useState(false);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
   const [showSupplierSelector, setShowSupplierSelector] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [createReminder, setCreateReminder] = useState(true);
   
   // Photo viewer state
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -237,6 +249,8 @@ export default function ExpensesScreen() {
     setInvoicePhoto(null);
     setInvoicePhotos([]);
     setEditingExpense(null);
+    setIsRecurring(false);
+    setCreateReminder(true);
   };
 
   const openAddModal = () => {
@@ -357,6 +371,8 @@ export default function ExpensesScreen() {
             supplier_id: selectedSupplierId,
             invoice_photo: invoicePhotos.length > 0 ? invoicePhotos[0] : null,
             invoice_photos: invoicePhotos,
+            is_recurring: isRecurring,
+            create_reminder: createReminder,
           }
         : {
             rider_id: selectedEntityId,
@@ -369,6 +385,8 @@ export default function ExpensesScreen() {
             supplier_id: selectedSupplierId,
             invoice_photo: invoicePhotos.length > 0 ? invoicePhotos[0] : null,
             invoice_photos: invoicePhotos,
+            is_recurring: isRecurring,
+            create_reminder: createReminder,
           };
 
       const endpoint = expenseType === 'horse' ? '/api/expenses' : '/api/rider-expenses';
@@ -397,8 +415,12 @@ export default function ExpensesScreen() {
   const deleteExpense = (expense: Expense) => {
     const isRiderExpense = 'rider_id' in expense && expense.rider_id;
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(t('confirmDeleteExpense'));
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(t('confirmDeleteExpense'));
+        if (confirmed) {
+          performDeleteExpense(expense.id, isRiderExpense);
+        }
+      } catch (e) {
         performDeleteExpense(expense.id, isRiderExpense);
       }
     } else {
@@ -779,6 +801,39 @@ export default function ExpensesScreen() {
                 ))}
               </ScrollView>
             )}
+
+            {/* Options Section */}
+            <View style={styles.optionsSection}>
+              <Text style={styles.optionsSectionTitle}>{t('options')}</Text>
+              
+              {/* Recurring Expense */}
+              <TouchableOpacity 
+                style={styles.checkboxRow}
+                onPress={() => setIsRecurring(!isRecurring)}
+              >
+                <View style={[styles.checkbox, isRecurring && styles.checkboxChecked]}>
+                  {isRecurring && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </View>
+                <View style={styles.checkboxTextContainer}>
+                  <Text style={styles.checkboxLabel}>{t('recurringExpense')}</Text>
+                  <Text style={styles.checkboxDescription}>{t('recurringExpenseDescription')}</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Auto Reminder */}
+              <TouchableOpacity 
+                style={styles.checkboxRow}
+                onPress={() => setCreateReminder(!createReminder)}
+              >
+                <View style={[styles.checkbox, createReminder && styles.checkboxChecked]}>
+                  {createReminder && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </View>
+                <View style={styles.checkboxTextContainer}>
+                  <Text style={styles.checkboxLabel}>{t('createAutoReminder')}</Text>
+                  <Text style={styles.checkboxDescription}>{t('createAutoReminderDescription')}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.bottomSpacer} />
           </ScrollView>
@@ -1323,5 +1378,50 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#999',
     padding: 20,
+  },
+  optionsSection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  optionsSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingVertical: 8,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#2E7D32',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#2E7D32',
+  },
+  checkboxTextContainer: {
+    flex: 1,
+  },
+  checkboxLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  checkboxDescription: {
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
   },
 });

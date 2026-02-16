@@ -6,12 +6,14 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { api } from '../src/utils/api';
 
 export default function SettingsScreen() {
   const { user, logout, changeLanguage } = useAuth();
@@ -39,6 +41,53 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleDeleteAccount = () => {
+    const confirmDelete = async () => {
+      try {
+        const response = await api.delete('/api/auth/delete-account');
+        if (response.ok) {
+          Alert.alert(
+            t('accountDeleted'),
+            t('accountDeletedMessage'),
+            [{ text: 'OK', onPress: () => {
+              logout();
+              router.replace('/login');
+            }}]
+          );
+        } else {
+          Alert.alert(t('error'), t('deleteAccountError'));
+        }
+      } catch (error) {
+        console.error('Delete account error:', error);
+        Alert.alert(t('error'), t('connectionError'));
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      try {
+        const confirmed = window.confirm(t('deleteAccountConfirm'));
+        if (confirmed) {
+          confirmDelete();
+        }
+      } catch (e) {
+        confirmDelete();
+      }
+    } else {
+      Alert.alert(
+        t('deleteAccount'),
+        t('deleteAccountConfirm'),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          {
+            text: t('delete'),
+            style: 'destructive',
+            onPress: confirmDelete,
+          },
+        ]
+      );
+    }
   };
 
   const handleChangeLanguage = (lang: string) => {
@@ -164,6 +213,15 @@ export default function SettingsScreen() {
             <Text style={styles.logoutText}>{t('logout')}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Delete Account Section */}
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
+            <Ionicons name="trash-outline" size={24} color="#fff" />
+            <Text style={styles.deleteAccountText}>{t('deleteAccount')}</Text>
+          </TouchableOpacity>
+          <Text style={styles.deleteAccountWarning}>{t('deleteAccountWarning')}</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -287,6 +345,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#F44336',
+  },
+  deleteAccountButton: {
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  deleteAccountText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  deleteAccountWarning: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 8,
   },
   adminButton: {
     backgroundColor: '#fff',
