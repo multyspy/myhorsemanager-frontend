@@ -39,6 +39,20 @@ export const translations = {
     account: 'Cuenta',
     profile: 'Perfil',
     
+    // Feedback
+    feedback: 'Comentarios',
+    sendFeedback: 'Enviar comentarios',
+    sendFeedbackDescription: 'Ayúdanos a mejorar la app',
+    feedbackRequired: 'Por favor escribe tu mensaje',
+    feedbackSent: '¡Gracias! Tu mensaje ha sido enviado',
+    feedbackLabel: '¿Qué te gustaría contarnos?',
+    feedbackPlaceholder: 'Escribe aquí tus sugerencias, problemas o comentarios...',
+    feedbackInfo: 'Tu mensaje será enviado al equipo de desarrollo. Incluiremos información de tu app para ayudarte mejor.',
+    appInfo: 'Información de la app',
+    cannotOpenEmail: 'No se pudo abrir el cliente de correo',
+    send: 'Enviar',
+    sending: 'Enviando...',
+    
     // Navigation
     horses: 'Caballos',
     riders: 'Jinetes',
@@ -654,6 +668,7 @@ export const translations = {
       other: 'Otros',
       dentist: 'Dentista',
       physiotherapy: 'Fisioterapia',
+      equestrianCenter: 'Centro Hípico',
     },
   },
   
@@ -696,6 +711,20 @@ export const translations = {
     french: 'Français',
     account: 'Account',
     profile: 'Profile',
+    
+    // Feedback
+    feedback: 'Feedback',
+    sendFeedback: 'Send Feedback',
+    sendFeedbackDescription: 'Help us improve the app',
+    feedbackRequired: 'Please write your message',
+    feedbackSent: 'Thank you! Your message has been sent',
+    feedbackLabel: 'What would you like to tell us?',
+    feedbackPlaceholder: 'Write your suggestions, issues or comments here...',
+    feedbackInfo: 'Your message will be sent to the development team. We will include your app info to help you better.',
+    appInfo: 'App info',
+    cannotOpenEmail: 'Could not open email client',
+    send: 'Send',
+    sending: 'Sending...',
     
     // Navigation
     horses: 'Horses',
@@ -1280,6 +1309,7 @@ export const translations = {
       other: 'Other',
       dentist: 'Dentist',
       physiotherapy: 'Physiotherapy',
+      equestrianCenter: 'Equestrian Center',
     },
   },
   
@@ -1322,6 +1352,20 @@ export const translations = {
     french: 'Français',
     account: 'Compte',
     profile: 'Profil',
+    
+    // Feedback
+    feedback: 'Commentaires',
+    sendFeedback: 'Envoyer des commentaires',
+    sendFeedbackDescription: 'Aidez-nous à améliorer l\'app',
+    feedbackRequired: 'Veuillez écrire votre message',
+    feedbackSent: 'Merci ! Votre message a été envoyé',
+    feedbackLabel: 'Que souhaitez-vous nous dire ?',
+    feedbackPlaceholder: 'Écrivez vos suggestions, problèmes ou commentaires ici...',
+    feedbackInfo: 'Votre message sera envoyé à l\'équipe de développement. Nous inclurons les informations de votre app pour mieux vous aider.',
+    appInfo: 'Informations de l\'app',
+    cannotOpenEmail: 'Impossible d\'ouvrir le client email',
+    send: 'Envoyer',
+    sending: 'Envoi...',
     
     // Navigation
     horses: 'Chevaux',
@@ -1909,6 +1953,7 @@ export const translations = {
       other: 'Autre',
       dentist: 'Dentiste',
       physiotherapy: 'Physiothérapie',
+      equestrianCenter: 'Centre Équestre',
     },
   },
 };

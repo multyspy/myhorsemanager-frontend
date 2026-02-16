@@ -287,8 +287,12 @@ export default function RemindersScreen() {
 
   const deleteReminder = (reminder: Reminder) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(t('confirmDeleteReminder'));
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(t('confirmDeleteReminder'));
+        if (confirmed) {
+          performDeleteReminder(reminder.id);
+        }
+      } catch (e) {
         performDeleteReminder(reminder.id);
       }
     } else {

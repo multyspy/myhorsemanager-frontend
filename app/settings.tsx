@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,11 @@ import {
   Alert,
   ScrollView,
   Platform,
+  Linking,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,11 +19,19 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { api } from '../src/utils/api';
+import Constants from 'expo-constants';
+
+const APP_VERSION = Constants.expoConfig?.version || '1.2.3';
 
 export default function SettingsScreen() {
   const { user, logout, changeLanguage } = useAuth();
   const router = useRouter();
   const { t, i18n } = useTranslation();
+  
+  // Feedback modal state
+  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [sendingFeedback, setSendingFeedback] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -41,6 +54,56 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleSendFeedback = () => {
+    setFeedbackModalVisible(true);
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackMessage.trim()) {
+      Alert.alert(t('error'), t('feedbackRequired'));
+      return;
+    }
+
+    setSendingFeedback(true);
+    try {
+      const response = await api.post('/api/feedback', {
+        message: feedbackMessage,
+        app_version: APP_VERSION,
+        platform: Platform.OS,
+      });
+
+      if (response.ok) {
+        Alert.alert(t('success'), t('feedbackSent'));
+        setFeedbackMessage('');
+        setFeedbackModalVisible(false);
+      } else {
+        // Si el endpoint no existe, abrir email como fallback
+        const subject = encodeURIComponent(`My Horse Manager v${APP_VERSION} - Feedback`);
+        const body = encodeURIComponent(`${feedbackMessage}\n\n---\nApp: My Horse Manager\nVersion: ${APP_VERSION}\nUser: ${user?.email || 'N/A'}\nPlatform: ${Platform.OS}\n`);
+        const email = 'multyspy@gmail.com';
+        const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
+        
+        Linking.openURL(mailtoUrl).catch(() => {
+          Alert.alert(t('error'), t('cannotOpenEmail'));
+        });
+        setFeedbackModalVisible(false);
+      }
+    } catch (error) {
+      // Fallback to email
+      const subject = encodeURIComponent(`My Horse Manager v${APP_VERSION} - Feedback`);
+      const body = encodeURIComponent(`${feedbackMessage}\n\n---\nApp: My Horse Manager\nVersion: ${APP_VERSION}\nUser: ${user?.email || 'N/A'}\nPlatform: ${Platform.OS}\n`);
+      const email = 'jr.ascaso@eximbo.com';
+      const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
+      
+      Linking.openURL(mailtoUrl).catch(() => {
+        Alert.alert(t('error'), t('cannotOpenEmail'));
+      });
+      setFeedbackModalVisible(false);
+    } finally {
+      setSendingFeedback(false);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -214,6 +277,24 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Feedback Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('feedback')}</Text>
+          <TouchableOpacity 
+            style={styles.feedbackButton} 
+            onPress={handleSendFeedback}
+          >
+            <View style={styles.feedbackIconContainer}>
+              <Ionicons name="mail-outline" size={24} color="#2196F3" />
+            </View>
+            <View style={styles.feedbackTextContainer}>
+              <Text style={styles.feedbackButtonText}>{t('sendFeedback')}</Text>
+              <Text style={styles.feedbackSubtext}>{t('sendFeedbackDescription')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#999" />
+          </TouchableOpacity>
+        </View>
+
         {/* Delete Account Section */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
@@ -222,7 +303,71 @@ export default function SettingsScreen() {
           </TouchableOpacity>
           <Text style={styles.deleteAccountWarning}>{t('deleteAccountWarning')}</Text>
         </View>
+
+        {/* Version */}
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>My Horse Manager v{APP_VERSION}</Text>
+        </View>
       </ScrollView>
+
+      {/* Feedback Modal */}
+      <Modal
+        visible={feedbackModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setFeedbackModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalContainer}
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setFeedbackModalVisible(false)}>
+              <Text style={styles.modalCancel}>{t('cancel')}</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>{t('sendFeedback')}</Text>
+            <TouchableOpacity onPress={submitFeedback} disabled={sendingFeedback}>
+              <Text style={[styles.modalSend, sendingFeedback && styles.modalSendDisabled]}>
+                {sendingFeedback ? t('sending') : t('send')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.feedbackLabel}>{t('feedbackLabel')}</Text>
+            <TextInput
+              style={styles.feedbackInput}
+              value={feedbackMessage}
+              onChangeText={setFeedbackMessage}
+              placeholder={t('feedbackPlaceholder')}
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={8}
+              textAlignVertical="top"
+            />
+
+            <View style={styles.feedbackInfoContainer}>
+              <Ionicons name="information-circle-outline" size={20} color="#666" />
+              <Text style={styles.feedbackInfoText}>
+                {t('feedbackInfo')}
+              </Text>
+            </View>
+
+            <View style={styles.appInfoContainer}>
+              <Text style={styles.appInfoLabel}>{t('appInfo')}:</Text>
+              <Text style={styles.appInfoValue}>My Horse Manager v{APP_VERSION}</Text>
+              <Text style={styles.appInfoValue}>{user?.email}</Text>
+              <Text style={styles.appInfoValue}>{Platform.OS}</Text>
+            </View>
+          </ScrollView>
+
+          {sendingFeedback && (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#2E7D32" />
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -399,5 +544,93 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginTop: 2,
+  },
+  // Feedback Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalCancel: {
+    fontSize: 16,
+    color: '#666',
+  },
+  modalSend: {
+    fontSize: 16,
+    color: '#2E7D32',
+    fontWeight: '600',
+  },
+  modalSendDisabled: {
+    opacity: 0.5,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  feedbackLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  feedbackInput: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    minHeight: 200,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    textAlignVertical: 'top',
+  },
+  feedbackInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  feedbackInfoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1976D2',
+    lineHeight: 18,
+  },
+  appInfoContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+  },
+  appInfoLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+  },
+  appInfoValue: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 4,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

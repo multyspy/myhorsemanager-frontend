@@ -49,6 +49,7 @@ const SUPPLIER_CATEGORIES = [
   'equipamiento',
   'transporte',
   'seguros',
+  'centro_hipico',
   'otros'
 ];
 
@@ -65,6 +66,7 @@ export default function SuppliersScreen() {
       equipamiento: 'supplierCategories.equipment',
       transporte: 'supplierCategories.transport',
       seguros: 'supplierCategories.insurance',
+      centro_hipico: 'supplierCategories.equestrianCenter',
       otros: 'supplierCategories.other'
     };
     return t(categoryKeys[category] || category);
@@ -93,6 +95,7 @@ export default function SuppliersScreen() {
   // Form state
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
@@ -183,6 +186,7 @@ export default function SuppliersScreen() {
   const resetForm = () => {
     setName('');
     setCategory('');
+    setCustomCategory('');
     setPhone('');
     setEmail('');
     setAddress('');
@@ -201,6 +205,7 @@ export default function SuppliersScreen() {
     setEditingSupplier(supplier);
     setName(supplier.name);
     setCategory(supplier.category || '');
+    setCustomCategory((supplier as any).custom_category || '');
     setPhone(supplier.phone || '');
     setEmail(supplier.email || '');
     setAddress(supplier.address || '');
@@ -240,6 +245,7 @@ export default function SuppliersScreen() {
       const supplierData = {
         name: name.trim(),
         category: category || null,
+        custom_category: category === 'otros' ? customCategory.trim() : null,
         phone: phone.trim() || null,
         email: email.trim() || null,
         address: address.trim() || null,
@@ -271,8 +277,12 @@ export default function SuppliersScreen() {
 
   const deleteSupplier = (supplier: Supplier) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(`${t('confirmDeleteSupplier')}`);
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(`${t('confirmDeleteSupplier')}`);
+        if (confirmed) {
+          performDeleteSupplier(supplier.id);
+        }
+      } catch (e) {
         performDeleteSupplier(supplier.id);
       }
     } else {
@@ -415,35 +425,41 @@ export default function SuppliersScreen() {
           {/* Date Filters */}
           <View style={styles.filterContainer}>
             <View style={styles.dateInputContainer}>
-              <Text style={styles.filterLabel}>Desde</Text>
+              <Text style={styles.filterLabel}>{t('from')}</Text>
               {Platform.OS === 'web' ? (
-                <input
-                  type="date"
-                  value={reportStartDate}
-                  onChange={(e: any) => setReportStartDate(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: 10,
-                    fontSize: 14,
-                    borderRadius: 8,
-                    border: '1px solid #e0e0e0',
-                    backgroundColor: '#fff',
-                  }}
-                />
+                <View style={styles.webDateInputWrapper}>
+                  <Ionicons name="calendar-outline" size={18} color="#666" />
+                  <input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e: any) => setReportStartDate(e.target.value)}
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      padding: 10,
+                      border: '1px solid #e0e0e0',
+                      borderRadius: 8,
+                      backgroundColor: '#f5f5f5',
+                      marginLeft: 8,
+                    }}
+                  />
+                </View>
               ) : (
                 <>
                   <TouchableOpacity 
-                    style={styles.dateButton} 
+                    style={styles.dateSelector} 
                     onPress={() => setShowStartDatePicker(true)}
                   >
-                    <Ionicons name="calendar" size={18} color="#666" />
-                    <Text style={styles.dateButtonText}>{formatDisplayDate(reportStartDate)}</Text>
+                    <Ionicons name="calendar-outline" size={18} color="#666" />
+                    <Text style={styles.dateSelectorText}>
+                      {reportStartDate ? formatDisplayDate(reportStartDate) : t('select')}
+                    </Text>
                   </TouchableOpacity>
                   {showStartDatePicker && (
                     <DateTimePicker
                       value={selectedStartDate}
                       mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      display="default"
                       onChange={onStartDateChange}
                     />
                   )}
@@ -451,41 +467,52 @@ export default function SuppliersScreen() {
               )}
             </View>
             <View style={styles.dateInputContainer}>
-              <Text style={styles.filterLabel}>Hasta</Text>
+              <Text style={styles.filterLabel}>{t('to')}</Text>
               {Platform.OS === 'web' ? (
-                <input
-                  type="date"
-                  value={reportEndDate}
-                  onChange={(e: any) => setReportEndDate(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: 10,
-                    fontSize: 14,
-                    borderRadius: 8,
-                    border: '1px solid #e0e0e0',
-                    backgroundColor: '#fff',
-                  }}
-                />
+                <View style={styles.webDateInputWrapper}>
+                  <Ionicons name="calendar-outline" size={18} color="#666" />
+                  <input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e: any) => setReportEndDate(e.target.value)}
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      padding: 10,
+                      border: '1px solid #e0e0e0',
+                      borderRadius: 8,
+                      backgroundColor: '#f5f5f5',
+                      marginLeft: 8,
+                    }}
+                  />
+                </View>
               ) : (
                 <>
                   <TouchableOpacity 
-                    style={styles.dateButton} 
+                    style={styles.dateSelector} 
                     onPress={() => setShowEndDatePicker(true)}
                   >
-                    <Ionicons name="calendar" size={18} color="#666" />
-                    <Text style={styles.dateButtonText}>{formatDisplayDate(reportEndDate)}</Text>
+                    <Ionicons name="calendar-outline" size={18} color="#666" />
+                    <Text style={styles.dateSelectorText}>
+                      {reportEndDate ? formatDisplayDate(reportEndDate) : t('select')}
+                    </Text>
                   </TouchableOpacity>
                   {showEndDatePicker && (
                     <DateTimePicker
                       value={selectedEndDate}
                       mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      display="default"
                       onChange={onEndDateChange}
                     />
                   )}
                 </>
               )}
             </View>
+            {(reportStartDate || reportEndDate) && (
+              <TouchableOpacity style={styles.clearButton} onPress={() => { setReportStartDate(''); setReportEndDate(''); }}>
+                <Ionicons name="close-circle" size={24} color="#999" />
+              </TouchableOpacity>
+            )}
           </View>
 
           {suppliersReport && (
@@ -567,6 +594,19 @@ export default function SuppliersScreen() {
               </Text>
               <Ionicons name="chevron-down" size={20} color="#666" />
             </TouchableOpacity>
+
+            {category === 'otros' && (
+              <>
+                <Text style={styles.label}>Especificar Categoría</Text>
+                <TextInput
+                  style={styles.input}
+                  value={customCategory}
+                  onChangeText={setCustomCategory}
+                  placeholder="Escribir categoría personalizada"
+                  placeholderTextColor="#999"
+                />
+              </>
+            )}
 
             <Text style={styles.label}>{t('contactPerson')}</Text>
             <TextInput
@@ -858,6 +898,7 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
     marginBottom: 16,
     gap: 12,
   },
@@ -877,7 +918,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
-  dateButton: {
+  dateSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -885,11 +926,21 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    gap: 8,
   },
-  dateButtonText: {
+  dateSelectorText: {
     fontSize: 14,
     color: '#333',
-    marginLeft: 8,
+  },
+  webDateInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingLeft: 10,
+  },
+  clearButton: {
+    padding: 8,
   },
   totalCard: {
     backgroundColor: '#2E7D32',

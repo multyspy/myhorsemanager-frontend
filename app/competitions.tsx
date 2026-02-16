@@ -517,8 +517,12 @@ export default function CompetitionsScreen() {
 
   const deleteCompetition = (competition: Competition) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(t('confirmDeleteCompetition'));
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(t('confirmDeleteCompetition'));
+        if (confirmed) {
+          performDeleteCompetition(competition.id);
+        }
+      } catch (e) {
         performDeleteCompetition(competition.id);
       }
     } else {

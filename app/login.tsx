@@ -18,6 +18,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import Constants from 'expo-constants';
+
+const APP_VERSION = Constants.expoConfig?.version || '1.2.3';
 
 const LANGUAGES = [
   { code: 'es', name: 'Español', flag: '🇪🇸' },
@@ -151,6 +154,8 @@ export default function LoginScreen() {
                 <Text style={styles.registerLink}>{t('register')}</Text>
               </TouchableOpacity>
             </View>
+
+            <Text style={styles.versionText}>v{APP_VERSION}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -368,5 +373,11 @@ const styles = StyleSheet.create({
   languageOptionTextSelected: {
     color: '#2E7D32',
     fontWeight: '600',
+  },
+  versionText: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 12,
+    marginTop: 24,
   },
 });

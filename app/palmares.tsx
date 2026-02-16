@@ -320,8 +320,12 @@ export default function PalmaresScreen() {
 
   const deletePalmares = (palmares: Palmares) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(t('confirmDeleteAchievement'));
-      if (confirmed) {
+      try {
+        const confirmed = window.confirm(t('confirmDeleteAchievement'));
+        if (confirmed) {
+          performDeletePalmares(palmares.id);
+        }
+      } catch (e) {
         performDeletePalmares(palmares.id);
       }
     } else {
