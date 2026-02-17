@@ -13,16 +13,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { PurchasesPackage } from 'react-native-purchases';
 
 export default function SubscriptionScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { offerings, isProUser, loading, purchasePackage, restorePurchases } = useSubscription();
+  const { offerings, isProUser, loading, purchasePackage, restorePurchases, isConfigured } = useSubscription();
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState(false);
 
-  const handlePurchase = async (pkg: PurchasesPackage) => {
+  const handlePurchase = async (pkg: any) => {
     setPurchasing(true);
     setSelectedPackage(pkg.identifier);
     
