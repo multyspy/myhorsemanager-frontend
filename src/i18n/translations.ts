@@ -63,6 +63,27 @@ export const translations = {
     reminders: 'Avisos',
     reports: 'Informes',
     prizes: 'Premios',
+    subscription: 'Suscripción',
+    
+    // Subscription
+    goPremium: 'Hazte Premium',
+    youArePremium: '¡Eres Premium!',
+    premiumDescription: 'Tienes acceso a todas las funciones premium',
+    premiumFeatures: 'Funciones Premium',
+    feature1: 'Caballos y jinetes ilimitados',
+    feature2: 'Informes avanzados y exportación',
+    feature3: 'Recordatorios automáticos',
+    feature4: 'Soporte prioritario',
+    monthly: 'Mensual',
+    annual: 'Anual',
+    perMonth: '/mes',
+    perYear: '/año',
+    bestValue: '¡Mejor precio!',
+    save30: 'Ahorra un 30%',
+    subscribe: 'Suscribirse',
+    restorePurchases: 'Restaurar compras',
+    noProductsAvailable: 'Productos no disponibles. Inténtalo de nuevo más tarde.',
+    subscriptionTerms: 'El pago se cargará a tu cuenta de iTunes/Google Play. La suscripción se renueva automáticamente a menos que se cancele 24 horas antes del final del período actual.',
     
     // Common
     save: 'Guardar',

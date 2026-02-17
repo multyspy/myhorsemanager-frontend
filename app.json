@@ -2,7 +2,7 @@
   "expo": {
     "name": "My Horse Manager",
     "slug": "my-horse-manager",
-    "version": "1.2.5",
+    "version": "1.2.6",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myhorsemanager",

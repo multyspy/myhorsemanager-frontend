@@ -295,6 +295,24 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Subscription Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('subscription')}</Text>
+          <TouchableOpacity 
+            style={styles.premiumButton} 
+            onPress={() => router.push('/subscription')}
+          >
+            <View style={styles.premiumIconContainer}>
+              <Ionicons name="star" size={24} color="#FFD700" />
+            </View>
+            <View style={styles.premiumTextContainer}>
+              <Text style={styles.premiumButtonText}>{t('goPremium')}</Text>
+              <Text style={styles.premiumSubtext}>{t('premiumFeatures')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#999" />
+          </TouchableOpacity>
+        </View>
+
         {/* Delete Account Section */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
@@ -471,6 +489,42 @@ const styles = StyleSheet.create({
   languageTextActive: {
     fontWeight: '600',
     color: '#2E7D32',
+  },
+  premiumButton: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+  },
+  premiumIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF8E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  premiumTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  premiumButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  premiumSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
   logoutButton: {
     backgroundColor: '#fff',
