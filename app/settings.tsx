@@ -721,4 +721,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  versionContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  versionText: {
+    fontSize: 14,
+    color: '#999',
+  },
 });
