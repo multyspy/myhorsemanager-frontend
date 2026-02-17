@@ -4,6 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { StyleSheet, Platform, View, Text, AppState, TouchableOpacity, ActivityIndicator } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { SubscriptionProvider } from '../src/context/SubscriptionContext';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 
@@ -84,10 +85,10 @@ function TabLayoutContent() {
 
     return () => {
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
       }
       subscription.remove();
     };
@@ -294,7 +295,9 @@ export default function RootLayout() {
   return (
     <I18nextProvider i18n={i18n}>
       <AuthProvider>
-        <RootLayoutNav />
+        <SubscriptionProvider>
+          <RootLayoutNav />
+        </SubscriptionProvider>
       </AuthProvider>
     </I18nextProvider>
   );
