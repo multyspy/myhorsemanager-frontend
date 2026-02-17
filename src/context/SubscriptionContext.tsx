@@ -1,25 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Platform, Alert } from 'react-native';
-import Purchases, { 
-  PurchasesOffering, 
-  CustomerInfo, 
-  PurchasesPackage,
-  LOG_LEVEL 
-} from 'react-native-purchases';
+import { Platform } from 'react-native';
 
-// RevenueCat API Keys (reemplaza con tus keys reales)
+// RevenueCat API Keys - REEMPLAZA CON TUS KEYS REALES
 const REVENUECAT_API_KEYS = {
-  apple: 'appl_xxxxxxxxxxxxxxxxx', // Tu Apple API Key de RevenueCat
-  google: 'goog_xxxxxxxxxxxxxxxxx', // Tu Google API Key de RevenueCat
-  test: 'test_xxxxxxxxxxxxxxxxx', // Test API Key para desarrollo
+  apple: 'appb480fd8107', // Tu Apple API Key de RevenueCat
+  google: 'app51c7d3dcbe', // Tu Google API Key de RevenueCat
 };
 
 interface SubscriptionContextType {
   isProUser: boolean;
-  offerings: PurchasesOffering | null;
-  customerInfo: CustomerInfo | null;
+  offerings: any | null;
+  customerInfo: any | null;
   loading: boolean;
-  purchasePackage: (pkg: PurchasesPackage) => Promise<boolean>;
+  isConfigured: boolean;
+  purchasePackage: (pkg: any) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   checkSubscriptionStatus: () => Promise<void>;
 }
@@ -32,86 +26,95 @@ interface SubscriptionProviderProps {
 
 export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ children }) => {
   const [isProUser, setIsProUser] = useState(false);
-  const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [offerings, setOfferings] = useState<any | null>(null);
+  const [customerInfo, setCustomerInfo] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(false);
 
   useEffect(() => {
     initializePurchases();
   }, []);
 
   const initializePurchases = async () => {
+    // Skip initialization if API keys are not configured
+    const apiKey = Platform.OS === 'ios' 
+      ? REVENUECAT_API_KEYS.apple 
+      : REVENUECAT_API_KEYS.google;
+    
+    // Check if keys are placeholder values
+    if (apiKey.includes('xxxxxxxxx')) {
+      console.log('RevenueCat: API keys not configured, skipping initialization');
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Configurar nivel de log para debug
-      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-
-      // Seleccionar API key según plataforma
-      let apiKey = REVENUECAT_API_KEYS.test; // Usar test key por defecto en desarrollo
+      // Dynamically import RevenueCat only when needed
+      const Purchases = require('react-native-purchases').default;
       
-      if (!__DEV__) {
-        // En producción, usar keys reales
-        if (Platform.OS === 'ios') {
-          apiKey = REVENUECAT_API_KEYS.apple;
-        } else if (Platform.OS === 'android') {
-          apiKey = REVENUECAT_API_KEYS.google;
-        }
-      }
-
-      // Configurar RevenueCat
+      // Configure RevenueCat
       await Purchases.configure({ apiKey });
+      setIsConfigured(true);
 
-      // Obtener offerings (productos disponibles)
+      // Get offerings
       const fetchedOfferings = await Purchases.getOfferings();
       if (fetchedOfferings.current) {
         setOfferings(fetchedOfferings.current);
       }
 
-      // Verificar estado de suscripción
-      await checkSubscriptionStatus();
+      // Check subscription status
+      const info = await Purchases.getCustomerInfo();
+      setCustomerInfo(info);
+      const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
+      setIsProUser(hasProAccess);
 
-      // Escuchar cambios en la información del cliente
-      Purchases.addCustomerInfoUpdateListener((info) => {
-        updateCustomerInfo(info);
+      // Listen for changes
+      Purchases.addCustomerInfoUpdateListener((info: any) => {
+        setCustomerInfo(info);
+        const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
+        setIsProUser(hasProAccess);
       });
 
     } catch (error) {
-      console.error('Error initializing RevenueCat:', error);
+      // Silently fail - subscriptions just won't work
+      console.log('RevenueCat not available:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const updateCustomerInfo = (info: CustomerInfo) => {
-    setCustomerInfo(info);
-    // Verificar si tiene el entitlement "pro"
-    const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
-    setIsProUser(hasProAccess);
-  };
-
   const checkSubscriptionStatus = async () => {
+    if (!isConfigured) return;
     try {
+      const Purchases = require('react-native-purchases').default;
       const info = await Purchases.getCustomerInfo();
-      updateCustomerInfo(info);
+      setCustomerInfo(info);
+      const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
+      setIsProUser(hasProAccess);
     } catch (error) {
-      console.error('Error checking subscription status:', error);
+      console.log('Error checking subscription status:', error);
     }
   };
 
-  const purchasePackage = async (pkg: PurchasesPackage): Promise<boolean> => {
+  const purchasePackage = async (pkg: any): Promise<boolean> => {
+    if (!isConfigured) {
+      console.log('RevenueCat not configured');
+      return false;
+    }
     try {
       setLoading(true);
+      const Purchases = require('react-native-purchases').default;
       const { customerInfo: newInfo } = await Purchases.purchasePackage(pkg);
-      updateCustomerInfo(newInfo);
+      setCustomerInfo(newInfo);
       
       if (typeof newInfo.entitlements.active['pro'] !== 'undefined') {
-        Alert.alert('¡Éxito!', '¡Bienvenido a Premium! Ya tienes acceso a todas las funciones.');
+        setIsProUser(true);
         return true;
       }
       return false;
     } catch (error: any) {
       if (!error.userCancelled) {
-        console.error('Error purchasing package:', error);
-        Alert.alert('Error', 'No se pudo completar la compra. Inténtalo de nuevo.');
+        console.log('Error purchasing package:', error);
       }
       return false;
     } finally {
@@ -120,21 +123,23 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   };
 
   const restorePurchases = async (): Promise<boolean> => {
+    if (!isConfigured) {
+      console.log('RevenueCat not configured');
+      return false;
+    }
     try {
       setLoading(true);
+      const Purchases = require('react-native-purchases').default;
       const restoredInfo = await Purchases.restorePurchases();
-      updateCustomerInfo(restoredInfo);
+      setCustomerInfo(restoredInfo);
       
       if (typeof restoredInfo.entitlements.active['pro'] !== 'undefined') {
-        Alert.alert('¡Éxito!', 'Tus compras han sido restauradas.');
+        setIsProUser(true);
         return true;
-      } else {
-        Alert.alert('Info', 'No se encontraron compras anteriores.');
-        return false;
       }
+      return false;
     } catch (error) {
-      console.error('Error restoring purchases:', error);
-      Alert.alert('Error', 'No se pudieron restaurar las compras.');
+      console.log('Error restoring purchases:', error);
       return false;
     } finally {
       setLoading(false);
@@ -148,6 +153,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         offerings,
         customerInfo,
         loading,
+        isConfigured,
         purchasePackage,
         restorePurchases,
         checkSubscriptionStatus,
