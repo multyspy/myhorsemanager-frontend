@@ -5,8 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // RevenueCat API Keys - REEMPLAZA CON TUS KEYS REALES
 const REVENUECAT_API_KEYS = {
-  apple: 'appl_xxxxxxxxxxxxxxxxx', // Tu Apple API Key de RevenueCat
-  google: 'goog_xxxxxxxxxxxxxxxxx', // Tu Google API Key de RevenueCat
+  apple: 'appl_CkKBisxijTBwQrwlWelUwTGjuEp', // Tu Apple API Key de RevenueCat
+  google: 'goog_SFalMPsWHncznFlnQHiHZYQabDO', // Tu Google API Key de RevenueCat
 };
 
 interface SubscriptionContextType {
