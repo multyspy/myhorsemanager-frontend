@@ -90,6 +90,18 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   useEffect(() => {
     initializePurchases();
     checkBackendSubscriptionStatus();
+    
+    // Configurar un intervalo para verificar el token periódicamente
+    // Esto detectará cuando el usuario hace login
+    const checkInterval = setInterval(async () => {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (token && !isProUser && premiumSource === 'none') {
+        console.log('SubscriptionContext: Token detected, rechecking status...');
+        checkBackendSubscriptionStatus();
+      }
+    }, 2000); // Verificar cada 2 segundos
+    
+    return () => clearInterval(checkInterval);
   }, [checkBackendSubscriptionStatus]);
 
   const initializePurchases = async () => {

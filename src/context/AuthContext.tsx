@@ -106,6 +106,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     await AsyncStorage.setItem('auth_token', data.access_token);
     await AsyncStorage.setItem('auth_user', JSON.stringify(data.user));
+    
+    // Trigger subscription status refresh
+    if (onLoginCallback) {
+      onLoginCallback();
+    }
+  };
+
+  // Callback to refresh subscription status after login
+  const [onLoginCallback, setOnLoginCallback] = useState<(() => void) | null>(null);
+  
+  const setLoginCallback = (callback: () => void) => {
+    setOnLoginCallback(() => callback);
   };
 
   const register = async (email: string, password: string, name: string, securityQuestion?: string, securityAnswer?: string) => {
