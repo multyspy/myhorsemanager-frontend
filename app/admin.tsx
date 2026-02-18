@@ -33,6 +33,7 @@ interface User {
   name: string;
   language: string;
   is_admin: boolean;
+  is_premium: boolean;
   created_at: string | null;
   last_login: string | null;
   stats: {
@@ -248,6 +249,27 @@ export default function AdminScreen() {
   const handleToggleAdmin = async (userToToggle: User) => {
     try {
       const response = await fetch(`${API_URL}/api/admin/users/${userToToggle.id}/toggle-admin`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        Alert.alert(t('success'), data.message);
+        fetchUsers(searchQuery);
+        setShowUserModal(false);
+      } else {
+        const error = await response.json();
+        Alert.alert(t('error'), error.detail);
+      }
+    } catch (error) {
+      Alert.alert(t('error'), t('errorUpdatingUser'));
+    }
+  };
+
+  const handleTogglePremium = async (userToToggle: User) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/users/${userToToggle.id}/toggle-premium`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -497,6 +519,12 @@ export default function AdminScreen() {
         <View style={styles.userInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.userName}>{item.name || t('noName')}</Text>
+            {item.is_premium && (
+              <View style={[styles.adminBadge, styles.premiumBadge]}>
+                <Ionicons name="star" size={12} color="#fff" />
+                <Text style={styles.adminBadgeText}>PRO</Text>
+              </View>
+            )}
             {item.is_admin && (
               <View style={styles.adminBadge}>
                 <Ionicons name="shield-checkmark" size={12} color="#fff" />
@@ -650,12 +678,20 @@ export default function AdminScreen() {
                   </View>
                   <Text style={styles.detailName}>{selectedUser.name || t('noName')}</Text>
                   <Text style={styles.detailEmail}>{selectedUser.email}</Text>
-                  {selectedUser.is_admin && (
-                    <View style={styles.adminBadgeLarge}>
-                      <Ionicons name="shield-checkmark" size={16} color="#fff" />
-                      <Text style={styles.adminBadgeTextLarge}>Administrator</Text>
-                    </View>
-                  )}
+                  <View style={styles.badgeRow}>
+                    {selectedUser.is_premium && (
+                      <View style={[styles.adminBadgeLarge, styles.premiumBadgeLarge]}>
+                        <Ionicons name="star" size={16} color="#fff" />
+                        <Text style={styles.adminBadgeTextLarge}>Premium</Text>
+                      </View>
+                    )}
+                    {selectedUser.is_admin && (
+                      <View style={styles.adminBadgeLarge}>
+                        <Ionicons name="shield-checkmark" size={16} color="#fff" />
+                        <Text style={styles.adminBadgeTextLarge}>Administrator</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
                 <View style={styles.detailStats}>
@@ -685,9 +721,29 @@ export default function AdminScreen() {
                     <Text style={styles.detailLabel}>{t('language')}:</Text>
                     <Text style={styles.detailValue}>{selectedUser.language?.toUpperCase()}</Text>
                   </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>{t('plan')}:</Text>
+                    <Text style={[styles.detailValue, selectedUser.is_premium ? styles.premiumText : styles.freeText]}>
+                      {selectedUser.is_premium ? 'Premium' : t('free')}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.premiumButton]}
+                    onPress={() => handleTogglePremium(selectedUser)}
+                  >
+                    <Ionicons 
+                      name={selectedUser.is_premium ? "star-outline" : "star"} 
+                      size={20} 
+                      color="#fff" 
+                    />
+                    <Text style={styles.actionButtonText}>
+                      {selectedUser.is_premium ? t('removePremium') : t('makePremium')}
+                    </Text>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.actionButton, styles.adminButton]}
                     onPress={() => handleToggleAdmin(selectedUser)}
@@ -1171,6 +1227,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginLeft: 8,
   },
+  premiumBadge: {
+    backgroundColor: '#FFB300',
+  },
   adminBadgeText: {
     fontSize: 10,
     color: '#fff',
@@ -1301,13 +1360,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 16,
-    marginTop: 12,
+    marginTop: 8,
+    marginRight: 8,
+  },
+  premiumBadgeLarge: {
+    backgroundColor: '#FFB300',
   },
   adminBadgeTextLarge: {
     fontSize: 14,
     color: '#fff',
     fontWeight: 'bold',
     marginLeft: 6,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  premiumText: {
+    color: '#FFB300',
+    fontWeight: 'bold',
+  },
+  freeText: {
+    color: '#999',
   },
   detailStats: {
     flexDirection: 'row',
@@ -1360,6 +1436,9 @@ const styles = StyleSheet.create({
   },
   adminButton: {
     backgroundColor: '#9C27B0',
+  },
+  premiumButton: {
+    backgroundColor: '#FFB300',
   },
   deleteButton: {
     backgroundColor: '#F44336',

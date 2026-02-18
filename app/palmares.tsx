@@ -21,6 +21,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 
 
 interface Palmares {
@@ -99,6 +102,8 @@ const POSITIONS = [
 export default function PalmaresScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   const [palmaresList, setPalmaresList] = useState<Palmares[]>([]);
   const [horses, setHorses] = useState<Horse[]>([]);
   const [riders, setRiders] = useState<Rider[]>([]);
@@ -110,6 +115,9 @@ export default function PalmaresScreen() {
   const [filterHorseId, setFilterHorseId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'palmares' | 'premios'>('palmares');
+
+  // Check if user can add more palmares
+  const canAddPalmares = canAddMore(isProUser, 'palmares', palmaresList.length);
   
   // Form state
   const [selectedRiderId, setSelectedRiderId] = useState('');
@@ -232,6 +240,20 @@ export default function PalmaresScreen() {
   };
 
   const openAddModal = () => {
+    // Verificar límites en tiempo real
+    const currentCanAdd = canAddMore(isProUser, 'palmares', palmaresList.length);
+    
+    if (!currentCanAdd) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('palmares').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('seePlans'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
     resetForm();
     if (filterRiderId) setSelectedRiderId(filterRiderId);
     if (filterHorseId) setSelectedHorseId(filterHorseId);

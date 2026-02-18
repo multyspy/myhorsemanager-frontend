@@ -7,6 +7,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +22,30 @@ export default function SubscriptionScreen() {
   const { offerings, isProUser, loading, purchasePackage, restorePurchases, isConfigured } = useSubscription();
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState(false);
+
+  // URLs de las tiendas
+  const APP_STORE_URL = 'https://apps.apple.com/app/my-horse-manager/id6450661480';
+  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.myhorse.manager';
+
+  const openStore = async () => {
+    const url = Platform.OS === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert(t('error'), t('cannotOpenStore'));
+    }
+  };
+
+  const openSubscriptionManagement = async () => {
+    const url = Platform.OS === 'ios' 
+      ? 'https://apps.apple.com/account/subscriptions'
+      : 'https://play.google.com/store/account/subscriptions';
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert(t('error'), t('cannotOpenStore'));
+    }
+  };
 
   const handlePurchase = async (pkg: any) => {
     setPurchasing(true);
@@ -169,10 +195,26 @@ export default function SubscriptionScreen() {
           })}
         </View>
 
-        {/* No offerings fallback */}
+        {/* No offerings fallback - Show store links */}
         {(!offerings || offerings.availablePackages.length === 0) && (
           <View style={styles.noOfferings}>
-            <Text style={styles.noOfferingsText}>{t('noProductsAvailable')}</Text>
+            <Ionicons name="storefront-outline" size={48} color="#999" />
+            <Text style={styles.noOfferingsTitle}>{t('subscribeInStore')}</Text>
+            <Text style={styles.noOfferingsText}>{t('subscribeInStoreDescription')}</Text>
+            
+            <TouchableOpacity 
+              style={styles.storeButton} 
+              onPress={openStore}
+            >
+              <Ionicons 
+                name={Platform.OS === 'ios' ? 'logo-apple-appstore' : 'logo-google-playstore'} 
+                size={24} 
+                color="#fff" 
+              />
+              <Text style={styles.storeButtonText}>
+                {Platform.OS === 'ios' ? t('openAppStore') : t('openPlayStore')}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -359,13 +401,39 @@ const styles = StyleSheet.create({
     color: '#2E7D32',
   },
   noOfferings: {
-    padding: 20,
+    padding: 32,
     alignItems: 'center',
+    backgroundColor: '#fff',
+    margin: 16,
+    borderRadius: 16,
+  },
+  noOfferingsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
   },
   noOfferingsText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  storeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2E7D32',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 10,
+  },
+  storeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   restoreButton: {
     padding: 16,

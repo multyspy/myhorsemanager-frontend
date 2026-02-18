@@ -295,19 +295,19 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Subscription Section */}
+        {/* Subscription Section - Tu Plan */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('subscription')}</Text>
           <TouchableOpacity 
             style={styles.premiumButton} 
-            onPress={() => router.push('/subscription')}
+            onPress={() => router.push('/myplan')}
           >
             <View style={styles.premiumIconContainer}>
               <Ionicons name="star" size={24} color="#FFD700" />
             </View>
             <View style={styles.premiumTextContainer}>
-              <Text style={styles.premiumButtonText}>{t('goPremium')}</Text>
-              <Text style={styles.premiumSubtext}>{t('premiumFeatures')}</Text>
+              <Text style={styles.premiumButtonText}>{t('myPlan')}</Text>
+              <Text style={styles.premiumSubtext}>{t('viewYourPlan')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#999" />
           </TouchableOpacity>

@@ -21,6 +21,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 
@@ -123,6 +126,8 @@ const RIDER_CATEGORY_COLORS: Record<string, string> = {
 export default function ExpensesScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   
   // Function to get translated category name
   const getCategoryName = (category: string): string => {
@@ -160,6 +165,9 @@ export default function ExpensesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+
+  // Check if user can add more expenses
+  const canAddExpense = canAddMore(isProUser, 'expenses', expenses.length);
   
   // Tab state (horse or rider)
   const [expenseType, setExpenseType] = useState<'horse' | 'rider'>('horse');
@@ -254,6 +262,20 @@ export default function ExpensesScreen() {
   };
 
   const openAddModal = () => {
+    // Verificar límites en tiempo real
+    const currentCanAdd = canAddMore(isProUser, 'expenses', expenses.length);
+    
+    if (!currentCanAdd) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('expenses').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('seePlans'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };

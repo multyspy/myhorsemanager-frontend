@@ -154,9 +154,11 @@ function TabLayoutContent() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#2E7D32',
-        tabBarInactiveTintColor: '#666',
+        tabBarInactiveTintColor: '#888',
         tabBarStyle: tabBarStyle,
         tabBarLabelStyle: styles.tabBarLabel,
+        tabBarIconStyle: { marginBottom: -2 },
+        tabBarItemStyle: { paddingTop: 4 },
         headerStyle: styles.header,
         headerTitleStyle: styles.headerTitle,
         headerTintColor: '#fff',
@@ -177,7 +179,7 @@ function TabLayoutContent() {
           title: t('horses'),
           headerTitle: t('myHorses'),
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="horse-head" size={size - 4} color={color} />
+            <FontAwesome5 name="horse-head" size={22} color={color} />
           ),
         }}
       />
@@ -187,7 +189,7 @@ function TabLayoutContent() {
           title: t('riders'),
           headerTitle: t('myRiders'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="body" size={size} color={color} />
+            <Ionicons name="person" size={24} color={color} />
           ),
         }}
       />
@@ -197,7 +199,7 @@ function TabLayoutContent() {
           title: t('expenses'),
           headerTitle: t('expenseControl'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet" size={size} color={color} />
+            <Ionicons name="wallet" size={24} color={color} />
           ),
         }}
       />
@@ -207,7 +209,7 @@ function TabLayoutContent() {
           title: t('palmares'),
           headerTitle: t('palmares'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="ribbon" size={size} color={color} />
+            <Ionicons name="trophy" size={24} color={color} />
           ),
         }}
       />
@@ -217,7 +219,7 @@ function TabLayoutContent() {
           title: t('competitions'),
           headerTitle: t('competitions'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flag" size={size} color={color} />
+            <Ionicons name="calendar" size={24} color={color} />
           ),
         }}
       />
@@ -227,7 +229,7 @@ function TabLayoutContent() {
           title: t('suppliers'),
           headerTitle: t('suppliers'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="storefront" size={size} color={color} />
+            <Ionicons name="storefront" size={24} color={color} />
           ),
         }}
       />
@@ -238,7 +240,7 @@ function TabLayoutContent() {
           headerTitle: t('reminders'),
           tabBarIcon: ({ color, size }) => (
             <View>
-              <Ionicons name="alarm" size={size} color={color} />
+              <Ionicons name="notifications" size={24} color={color} />
               {notificationCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
@@ -254,7 +256,7 @@ function TabLayoutContent() {
           title: t('reports'),
           headerTitle: t('reports'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" size={size} color={color} />
+            <Ionicons name="bar-chart" size={24} color={color} />
           ),
         }}
       />
@@ -308,13 +310,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
-    paddingTop: 4,
-    paddingBottom: Platform.OS === 'ios' ? 25 : 8,
-    height: Platform.OS === 'ios' ? 88 : 62,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    height: Platform.OS === 'ios' ? 95 : 70,
   },
   tabBarLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
+    marginTop: 2,
   },
   header: {
     backgroundColor: '#2E7D32',

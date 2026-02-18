@@ -2,7 +2,7 @@
   "expo": {
     "name": "My Horse Manager",
     "slug": "my-horse-manager",
-    "version": "1.2.6",
+    "version": "1.2.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myhorsemanager",
@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.emergent.horse-app-i18nf9b82183",
+      "buildNumber": "15",
       "infoPlist": {
         "NSCameraUsageDescription": "My Horse Manager necesita acceso a la cámara para que puedas tomar fotos de tus caballos y jinetes, que se guardarán en sus perfiles.",
         "NSPhotoLibraryUsageDescription": "My Horse Manager necesita acceso a tu galería de fotos para que puedas seleccionar imágenes de tus caballos y jinetes para añadir a sus perfiles.",
@@ -24,6 +25,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.myhorsemanager.app",
+      "versionCode": 15,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",

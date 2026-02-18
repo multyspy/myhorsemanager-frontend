@@ -22,6 +22,9 @@ import * as Notifications from 'expo-notifications';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 
 // Configure notifications
 Notifications.setNotificationHandler({
@@ -100,6 +103,8 @@ const DISCIPLINE_COLORS: Record<string, string> = {
 export default function CompetitionsScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   
   // Function to get translated discipline names
   const getDisciplineName = (discipline: string): string => {
@@ -125,6 +130,9 @@ export default function CompetitionsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+
+  // Check if user can add more competitions
+  const canAddCompetition = canAddMore(isProUser, 'competitions', competitions.length);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [editingCompetition, setEditingCompetition] = useState<Competition | null>(null);
   const [viewingCompetition, setViewingCompetition] = useState<Competition | null>(null);
@@ -387,6 +395,20 @@ export default function CompetitionsScreen() {
   };
 
   const openAddModal = () => {
+    // Verificar límites en tiempo real
+    const currentCanAdd = canAddMore(isProUser, 'competitions', competitions.length);
+    
+    if (!currentCanAdd) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('competitions').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('seePlans'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };

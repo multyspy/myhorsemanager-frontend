@@ -23,6 +23,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { useRouter } from 'expo-router';
 
 
 interface Horse {
@@ -120,6 +122,8 @@ const CATEGORY_TRANSLATION_KEYS: Record<string, string> = {
 export default function ReportsScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t, i18n } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   
   // Helper function to get month names based on current language
@@ -496,10 +500,35 @@ export default function ReportsScreen() {
           })
         )}
 
-        <TouchableOpacity style={styles.exportButton} onPress={exportData}>
-          <Ionicons name="download-outline" size={20} color="#fff" />
-          <Text style={styles.exportButtonText}>{t('exportToCsv')}</Text>
-        </TouchableOpacity>
+        {isProUser ? (
+          <TouchableOpacity style={styles.exportButton} onPress={exportData}>
+            <Ionicons name="download-outline" size={20} color="#fff" />
+            <Text style={styles.exportButtonText}>{t('exportToCsv')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.exportButton, styles.exportButtonDisabled]} 
+            onPress={() => {
+              Alert.alert(
+                t('premiumFeature'),
+                t('exportCsvPremiumOnly'),
+                [
+                  { text: t('cancel'), style: 'cancel' },
+                  { 
+                    text: t('seePlans'), 
+                    onPress: () => router.push('/subscription')
+                  },
+                ]
+              );
+            }}
+          >
+            <Ionicons name="lock-closed" size={18} color="#fff" />
+            <Text style={styles.exportButtonText}>{t('exportToCsv')}</Text>
+            <View style={styles.premiumBadge}>
+              <Text style={styles.premiumBadgeText}>PRO</Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -1325,10 +1354,25 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 8,
   },
+  exportButtonDisabled: {
+    backgroundColor: '#9E9E9E',
+  },
   exportButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  premiumBadge: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  premiumBadgeText: {
+    color: '#333',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   budgetHeader: {
     flexDirection: 'row',

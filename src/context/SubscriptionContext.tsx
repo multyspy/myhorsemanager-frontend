@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { Platform } from 'react-native';
+import { api } from '../utils/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // RevenueCat API Keys - REEMPLAZA CON TUS KEYS REALES
 const REVENUECAT_API_KEYS = {
-  apple: 'appb480fd8107', // Tu Apple API Key de RevenueCat
-  google: 'app51c7d3dcbe', // Tu Google API Key de RevenueCat
+  apple: 'appl_xxxxxxxxxxxxxxxxx', // Tu Apple API Key de RevenueCat
+  google: 'goog_xxxxxxxxxxxxxxxxx', // Tu Google API Key de RevenueCat
 };
 
 interface SubscriptionContextType {
@@ -13,9 +15,13 @@ interface SubscriptionContextType {
   customerInfo: any | null;
   loading: boolean;
   isConfigured: boolean;
+  isAdmin: boolean;
+  premiumExpiresAt: string | null;
+  premiumSource: string;
   purchasePackage: (pkg: any) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   checkSubscriptionStatus: () => Promise<void>;
+  refreshSubscriptionStatus: () => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -26,14 +32,65 @@ interface SubscriptionProviderProps {
 
 export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ children }) => {
   const [isProUser, setIsProUser] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [premiumExpiresAt, setPremiumExpiresAt] = useState<string | null>(null);
+  const [premiumSource, setPremiumSource] = useState<string>('none');
   const [offerings, setOfferings] = useState<any | null>(null);
   const [customerInfo, setCustomerInfo] = useState<any | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
+
+  // Check subscription status from backend (for admin-granted premium)
+  const checkBackendSubscriptionStatus = useCallback(async () => {
+    try {
+      // First check if we have a token
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        console.log('SubscriptionContext: No token, user is free');
+        setIsProUser(false);
+        setIsAdmin(false);
+        setPremiumExpiresAt(null);
+        setPremiumSource('none');
+        setLoading(false);
+        return;
+      }
+
+      console.log('SubscriptionContext: Checking subscription status...');
+      const response = await api.get('/api/user/subscription-status');
+      if (response.ok) {
+        const data = await response.json();
+        console.log('SubscriptionContext: Status received:', data);
+        setIsProUser(data.is_premium === true);
+        setIsAdmin(data.is_admin === true);
+        setPremiumExpiresAt(data.premium_expires_at || null);
+        setPremiumSource(data.premium_source || 'none');
+      } else {
+        console.log('SubscriptionContext: Failed to get status, assuming free user');
+        setIsProUser(false);
+        setIsAdmin(false);
+      }
+    } catch (error) {
+      console.log('SubscriptionContext: Error checking subscription status:', error);
+      setIsProUser(false);
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Public method to refresh subscription status (call after login)
+  const refreshSubscriptionStatus = useCallback(async () => {
+    setLoading(true);
+    await checkBackendSubscriptionStatus();
+    if (isConfigured) {
+      await checkSubscriptionStatus();
+    }
+  }, [checkBackendSubscriptionStatus, isConfigured]);
 
   useEffect(() => {
     initializePurchases();
-  }, []);
+    checkBackendSubscriptionStatus();
+  }, [checkBackendSubscriptionStatus]);
 
   const initializePurchases = async () => {
     // Skip initialization if API keys are not configured
@@ -66,13 +123,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       const info = await Purchases.getCustomerInfo();
       setCustomerInfo(info);
       const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
-      setIsProUser(hasProAccess);
+      if (hasProAccess) {
+        setIsProUser(true);
+      }
 
       // Listen for changes
       Purchases.addCustomerInfoUpdateListener((info: any) => {
         setCustomerInfo(info);
         const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
-        setIsProUser(hasProAccess);
+        if (hasProAccess) {
+          setIsProUser(true);
+        }
       });
 
     } catch (error) {
@@ -84,13 +145,18 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   };
 
   const checkSubscriptionStatus = async () => {
+    // First check backend status
+    await checkBackendSubscriptionStatus();
+    
     if (!isConfigured) return;
     try {
       const Purchases = require('react-native-purchases').default;
       const info = await Purchases.getCustomerInfo();
       setCustomerInfo(info);
       const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
-      setIsProUser(hasProAccess);
+      if (hasProAccess) {
+        setIsProUser(true);
+      }
     } catch (error) {
       console.log('Error checking subscription status:', error);
     }
@@ -154,9 +220,13 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         customerInfo,
         loading,
         isConfigured,
+        isAdmin,
+        premiumExpiresAt,
+        premiumSource,
         purchasePackage,
         restorePurchases,
         checkSubscriptionStatus,
+        refreshSubscriptionStatus,
       }}
     >
       {children}

@@ -25,6 +25,9 @@ import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { compressImage } from '../src/utils/mediaUtils';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 
 const MAX_SIZE_KB = 250; // Maximum photo size in KB
 
@@ -51,6 +54,8 @@ interface Horse {
 export default function RidersScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   const [riders, setRiders] = useState<Rider[]>([]);
   const [horses, setHorses] = useState<Horse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +80,9 @@ export default function RidersScreen() {
   
   // Date picker state
   const [selectedBirthDate, setSelectedBirthDate] = useState(new Date());
+
+  // Check if user can add more riders
+  const canAddRider = canAddMore(isProUser, 'riders', riders.length);
   const [showBirthDatePicker, setShowBirthDatePicker] = useState(false);
   
   // Photo viewer state
@@ -132,7 +140,21 @@ export default function RidersScreen() {
     setEditingRider(null);
   };
 
-  const openAddModal = () => {
+  const openAddModal = async () => {
+    // Verificar límites en tiempo real
+    const currentCanAdd = canAddMore(isProUser, 'riders', riders.length);
+    
+    if (!currentCanAdd) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('riders').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('seePlans'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };
@@ -234,6 +256,19 @@ export default function RidersScreen() {
 
   // Multiple photos functions
   const pickMultiplePhoto = async () => {
+    // Check photo limit for free users
+    if (!isProUser && photos.length >= FREE_LIMITS.photos) {
+      Alert.alert(
+        t('photoLimitReached'),
+        t('upgradeForMorePhotos'),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('upgradeToPremium'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
+
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(t('error'), t('permissionsRequired'));
@@ -257,6 +292,19 @@ export default function RidersScreen() {
   };
 
   const takeMultiplePhoto = async () => {
+    // Check photo limit for free users
+    if (!isProUser && photos.length >= FREE_LIMITS.photos) {
+      Alert.alert(
+        t('photoLimitReached'),
+        t('upgradeForMorePhotos'),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('upgradeToPremium'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
+
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(t('error'), t('permissionsRequired'));

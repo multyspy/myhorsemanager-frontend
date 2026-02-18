@@ -21,6 +21,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 
 
 interface Reminder {
@@ -139,7 +142,25 @@ export default function RemindersScreen() {
     setEditingReminder(null);
   };
 
+  const { isProUser } = useSubscription();
+  const router = useRouter();
+
   const openAddModal = () => {
+    // Verificar límite de recordatorios para usuarios gratuitos
+    if (!isProUser && reminders.length >= FREE_LIMITS.reminders) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('reminders').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { 
+            text: t('seePlans'), 
+            onPress: () => router.push('/subscription')
+          },
+        ]
+      );
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };

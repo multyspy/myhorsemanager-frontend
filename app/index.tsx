@@ -26,6 +26,9 @@ import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { compressImage } from '../src/utils/mediaUtils';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 
 const MAX_SIZE_KB = 250; // Maximum photo size in KB
 
@@ -49,6 +52,8 @@ interface Horse {
 export default function HorsesScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   const [horses, setHorses] = useState<Horse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,6 +83,25 @@ export default function HorsesScreen() {
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [viewingPhotoTitle, setViewingPhotoTitle] = useState<string>('');
 
+  // Check if user can add more horses
+  const canAddHorse = canAddMore(isProUser, 'horses', horses.length);
+
+  const handleAddHorse = () => {
+    if (!canAddHorse) {
+      Alert.alert(
+        t('limitReached').replace('{limit}', String(FREE_LIMITS.horses)),
+        t('upgradeToAdd'),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('upgradeToPremium'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
+    setEditingHorse(null);
+    resetForm();
+    setModalVisible(true);
+  };
   const fetchHorses = async () => {
     try {
       console.log('Fetching horses... Token available:', !!token);
@@ -128,6 +152,20 @@ export default function HorsesScreen() {
   };
 
   const openAddModal = () => {
+    // Verificar límites en tiempo real
+    const currentCanAdd = canAddMore(isProUser, 'horses', horses.length);
+    
+    if (!currentCanAdd) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('horses').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('seePlans'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };
@@ -179,6 +217,19 @@ export default function HorsesScreen() {
 
   // Multiple photos functions
   const pickMultiplePhoto = async () => {
+    // Check photo limit for free users
+    if (!isProUser && photos.length >= FREE_LIMITS.photos) {
+      Alert.alert(
+        t('photoLimitReached'),
+        t('upgradeForMorePhotos'),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('upgradeToPremium'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
+
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(t('error'), t('permissionsRequired'));

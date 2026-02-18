@@ -20,6 +20,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../src/context/SubscriptionContext';
+import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { useRouter } from 'expo-router';
 
 
 interface Supplier {
@@ -56,6 +59,8 @@ const SUPPLIER_CATEGORIES = [
 export default function SuppliersScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const { isProUser } = useSubscription();
+  const router = useRouter();
   
   // Function to get translated category names
   const getCategoryName = (category: string): string => {
@@ -90,6 +95,9 @@ export default function SuppliersScreen() {
   const [selectedStartDate, setSelectedStartDate] = useState(new Date());
   const [selectedEndDate, setSelectedEndDate] = useState(new Date());
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+
+  // Check if user can add more suppliers
+  const canAddSupplier = canAddMore(isProUser, 'suppliers', suppliers.length);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   
   // Form state
@@ -197,6 +205,20 @@ export default function SuppliersScreen() {
   };
 
   const openAddModal = () => {
+    // Verificar límites en tiempo real
+    const currentCanAdd = canAddMore(isProUser, 'suppliers', suppliers.length);
+    
+    if (!currentCanAdd) {
+      Alert.alert(
+        t('limitReached'),
+        t('upgradeToAddMore').replace('{item}', t('suppliers').toLowerCase()),
+        [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('seePlans'), onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
     resetForm();
     setModalVisible(true);
   };
