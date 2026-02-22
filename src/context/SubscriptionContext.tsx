@@ -179,7 +179,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       const Purchases = require('react-native-purchases').default;
       const info = await Purchases.getCustomerInfo();
       setCustomerInfo(info);
-      const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
+      console.log('Active entitlements:', Object.keys(info.entitlements.active));
+      
+      // Check for any of these entitlement identifiers
+      const hasProAccess = 
+        typeof info.entitlements.active['pro'] !== 'undefined' ||
+        typeof info.entitlements.active['Pro'] !== 'undefined' ||
+        typeof info.entitlements.active['premium'] !== 'undefined' ||
+        typeof info.entitlements.active['Premium'] !== 'undefined' ||
+        typeof info.entitlements.active['My Horse Manager Pro'] !== 'undefined' ||
+        Object.keys(info.entitlements.active).length > 0; // Any active entitlement = premium
+        
       if (hasProAccess) {
         setIsProUser(true);
       }
@@ -196,15 +206,27 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     try {
       setLoading(true);
       const Purchases = require('react-native-purchases').default;
+      console.log('Attempting to purchase package:', pkg.identifier);
       const { customerInfo: newInfo } = await Purchases.purchasePackage(pkg);
       setCustomerInfo(newInfo);
+      console.log('Purchase completed, checking entitlements:', Object.keys(newInfo.entitlements.active));
       
-      if (typeof newInfo.entitlements.active['pro'] !== 'undefined') {
+      // Check for any of these entitlement identifiers
+      const hasProAccess = 
+        typeof newInfo.entitlements.active['pro'] !== 'undefined' ||
+        typeof newInfo.entitlements.active['Pro'] !== 'undefined' ||
+        typeof newInfo.entitlements.active['premium'] !== 'undefined' ||
+        typeof newInfo.entitlements.active['Premium'] !== 'undefined' ||
+        typeof newInfo.entitlements.active['My Horse Manager Pro'] !== 'undefined' ||
+        Object.keys(newInfo.entitlements.active).length > 0; // Any active entitlement = premium
+      
+      if (hasProAccess) {
         setIsProUser(true);
         return true;
       }
       return false;
     } catch (error: any) {
+      console.log('Purchase error:', error.code, error.message);
       if (!error.userCancelled) {
         console.log('Error purchasing package:', error);
       }

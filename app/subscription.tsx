@@ -150,6 +150,9 @@ export default function SubscriptionScreen() {
         {/* Packages */}
         <View style={styles.packagesSection}>
           {offerings?.availablePackages.map((pkg) => {
+            // Debug: log package info
+            console.log('Package:', pkg.identifier, pkg.product?.productIdentifier);
+            
             const isMonthly = pkg.identifier === '$rc_monthly' || pkg.identifier === 'monthly' || pkg.identifier === 'mhm_monthly' || pkg.identifier.toLowerCase().includes('mensual') || pkg.identifier.toLowerCase().includes('monthly');
             const isSelected = selectedPackage === pkg.identifier;
             const isAnnual = pkg.identifier === '$rc_annual' || pkg.identifier === 'annual' || pkg.identifier === 'mhm_annual' || pkg.identifier.toLowerCase().includes('anual') || pkg.identifier.toLowerCase().includes('annual');
