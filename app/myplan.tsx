@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,12 @@ import { FREE_LIMITS } from '../src/utils/subscriptionLimits';
 export default function MyPlanScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { isProUser, customerInfo, loading, restorePurchases, premiumExpiresAt, premiumSource, isAdmin } = useSubscription();
+  const { isProUser, customerInfo, loading, restorePurchases, premiumExpiresAt, premiumSource, isAdmin, refreshSubscriptionStatus } = useSubscription();
+
+  // Refresh subscription status when screen loads
+  useEffect(() => {
+    refreshSubscriptionStatus();
+  }, []);
 
   // Obtener fecha de expiración (prioriza RevenueCat, luego backend)
   const getExpirationDate = (): string | null => {
@@ -62,6 +67,8 @@ export default function MyPlanScreen() {
   // Restaurar compras
   const handleRestore = async () => {
     const success = await restorePurchases();
+    // Always refresh status after restore attempt
+    await refreshSubscriptionStatus();
     if (success) {
       Alert.alert(t('success'), t('purchasesRestored'));
     } else {

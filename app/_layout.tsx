@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { StyleSheet, Platform, View, Text, AppState, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
-import { SubscriptionProvider } from '../src/context/SubscriptionContext';
+import { SubscriptionProvider, useSubscription } from '../src/context/SubscriptionContext';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 
@@ -59,8 +60,10 @@ function TabLayoutContent() {
   const notificationListener = useRef<any>();
   const responseListener = useRef<any>();
   const { token } = useAuth();
+  const { isAdmin } = useSubscription();
   const router = useRouter();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     // Only set up notifications if user is authenticated
@@ -148,7 +151,18 @@ function TabLayoutContent() {
   };
 
   // Hide tabs when not authenticated
-  const tabBarStyle = token ? styles.tabBar : { display: 'none' as const };
+  // Calculate safe bottom padding for Android navigation buttons
+  const bottomPadding = Platform.OS === 'android' 
+    ? Math.max(insets.bottom, 16) + 8 // Extra padding for Android nav buttons
+    : insets.bottom + 8;
+  
+  const tabBarHeight = Platform.OS === 'ios' ? 90 : 70 + bottomPadding;
+  
+  const tabBarStyle = token ? {
+    ...styles.tabBar,
+    paddingBottom: bottomPadding,
+    height: tabBarHeight,
+  } : { display: 'none' as const };
 
   return (
     <Tabs
@@ -260,6 +274,18 @@ function TabLayoutContent() {
           ),
         }}
       />
+      {/* Admin tab - only visible for admin users */}
+      <Tabs.Screen
+        name="admin"
+        options={{
+          title: 'Admin',
+          headerTitle: 'Admin',
+          href: isAdmin ? '/admin' : null, // Only show in tab bar for admins
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="shield-checkmark" size={24} color={color} />
+          ),
+        }}
+      />
       {/* Hide auth screens from tab bar */}
       <Tabs.Screen
         name="login"
@@ -311,8 +337,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
-    height: Platform.OS === 'ios' ? 95 : 70,
+    elevation: 8, // Shadow for Android
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   tabBarLabel: {
     fontSize: 10,

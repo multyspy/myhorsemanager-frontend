@@ -505,53 +505,61 @@ export default function AdminScreen() {
     }).format(amount);
   };
 
-  const renderUserItem = ({ item }: { item: User }) => (
-    <TouchableOpacity
-      style={styles.userCard}
-      onPress={() => { setSelectedUser(item); setShowUserModal(true); }}
-    >
-      <View style={styles.userHeader}>
-        <View style={styles.userAvatar}>
-          <Text style={styles.avatarText}>
-            {item.name?.charAt(0)?.toUpperCase() || item.email?.charAt(0)?.toUpperCase() || '?'}
-          </Text>
-        </View>
-        <View style={styles.userInfo}>
-          <View style={styles.nameRow}>
-            <Text style={styles.userName}>{item.name || t('noName')}</Text>
-            {item.is_premium && (
-              <View style={[styles.adminBadge, styles.premiumBadge]}>
-                <Ionicons name="star" size={12} color="#fff" />
-                <Text style={styles.adminBadgeText}>PRO</Text>
-              </View>
-            )}
-            {item.is_admin && (
-              <View style={styles.adminBadge}>
-                <Ionicons name="shield-checkmark" size={12} color="#fff" />
-                <Text style={styles.adminBadgeText}>Admin</Text>
-              </View>
-            )}
+  const renderUserItem = ({ item }: { item: User }) => {
+    // Determine user tier
+    const isFreeTier = !item.is_premium && !item.is_admin;
+    
+    return (
+      <TouchableOpacity
+        style={styles.userCard}
+        onPress={() => { setSelectedUser(item); setShowUserModal(true); }}
+      >
+        <View style={styles.userHeader}>
+          <View style={styles.userAvatar}>
+            <Text style={styles.avatarText}>
+              {item.name?.charAt(0)?.toUpperCase() || item.email?.charAt(0)?.toUpperCase() || '?'}
+            </Text>
           </View>
-          <Text style={styles.userEmail}>{item.email}</Text>
-          <Text style={styles.userDate}>{t('registered')}: {formatDate(item.created_at)}</Text>
+          <View style={styles.userInfo}>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName}>{item.name || t('noName')}</Text>
+              {item.is_admin ? (
+                <View style={styles.adminBadge}>
+                  <Ionicons name="shield-checkmark" size={12} color="#fff" />
+                  <Text style={styles.adminBadgeText}>Admin</Text>
+                </View>
+              ) : item.is_premium ? (
+                <View style={[styles.adminBadge, styles.premiumBadge]}>
+                  <Ionicons name="star" size={12} color="#fff" />
+                  <Text style={styles.adminBadgeText}>PRO</Text>
+                </View>
+              ) : (
+                <View style={[styles.adminBadge, styles.freeBadge]}>
+                  <Text style={styles.freeBadgeText}>Gratis</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.userEmail}>{item.email}</Text>
+            <Text style={styles.userDate}>{t('registered')}: {formatDate(item.created_at)}</Text>
+          </View>
         </View>
-      </View>
-      <View style={styles.userStats}>
-        <View style={styles.statItem}>
-          <Ionicons name="fitness" size={16} color="#2E7D32" />
-          <Text style={styles.statText}>{item.stats.horses}</Text>
+        <View style={styles.userStats}>
+          <View style={styles.statItem}>
+            <Ionicons name="fitness" size={16} color="#2E7D32" />
+            <Text style={styles.statText}>{item.stats.horses}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="body" size={16} color="#1976D2" />
+            <Text style={styles.statText}>{item.stats.riders}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="wallet" size={16} color="#F57C00" />
+            <Text style={styles.statText}>{item.stats.expenses}</Text>
+          </View>
         </View>
-        <View style={styles.statItem}>
-          <Ionicons name="body" size={16} color="#1976D2" />
-          <Text style={styles.statText}>{item.stats.riders}</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Ionicons name="wallet" size={16} color="#F57C00" />
-          <Text style={styles.statText}>{item.stats.expenses}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -1229,6 +1237,14 @@ const styles = StyleSheet.create({
   },
   premiumBadge: {
     backgroundColor: '#FFB300',
+  },
+  freeBadge: {
+    backgroundColor: '#9E9E9E',
+  },
+  freeBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: 'bold',
   },
   adminBadgeText: {
     fontSize: 10,
