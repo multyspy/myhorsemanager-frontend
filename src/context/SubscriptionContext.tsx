@@ -78,14 +78,49 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     }
   }, []);
 
+  // Login to RevenueCat with user email
+  const loginToRevenueCat = useCallback(async () => {
+    if (!isConfigured) return;
+    
+    try {
+      const Purchases = require('react-native-purchases').default;
+      const userDataStr = await AsyncStorage.getItem('user_data');
+      
+      if (userDataStr) {
+        const userData = JSON.parse(userDataStr);
+        if (userData.email) {
+          console.log('RevenueCat: Setting customer ID to', userData.email);
+          const { customerInfo } = await Purchases.logIn(userData.email);
+          setCustomerInfo(customerInfo);
+          
+          // Check if user has active entitlements
+          const hasProAccess = Object.keys(customerInfo.entitlements.active).length > 0;
+          if (hasProAccess) {
+            setIsProUser(true);
+          }
+          console.log('RevenueCat: Customer ID set successfully');
+        }
+      }
+    } catch (error) {
+      console.log('RevenueCat: Error setting customer ID:', error);
+    }
+  }, [isConfigured]);
+
   // Public method to refresh subscription status (call after login)
   const refreshSubscriptionStatus = useCallback(async () => {
     setLoading(true);
+    
+    // First login to RevenueCat with user email
+    await loginToRevenueCat();
+    
+    // Then check backend status
     await checkBackendSubscriptionStatus();
+    
+    // Finally check RevenueCat status
     if (isConfigured) {
       await checkSubscriptionStatus();
     }
-  }, [checkBackendSubscriptionStatus, isConfigured]);
+  }, [checkBackendSubscriptionStatus, isConfigured, loginToRevenueCat]);
 
   useEffect(() => {
     initializePurchases();
