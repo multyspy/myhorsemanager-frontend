@@ -124,6 +124,20 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       // Configure RevenueCat
       await Purchases.configure({ apiKey });
       setIsConfigured(true);
+      
+      // Try to login with user email if available
+      try {
+        const userDataStr = await AsyncStorage.getItem('user_data');
+        if (userDataStr) {
+          const userData = JSON.parse(userDataStr);
+          if (userData.email) {
+            console.log('RevenueCat: Logging in as', userData.email);
+            await Purchases.logIn(userData.email);
+          }
+        }
+      } catch (loginError) {
+        console.log('RevenueCat: Could not login user:', loginError);
+      }
 
       // Get offerings
       const fetchedOfferings = await Purchases.getOfferings();
