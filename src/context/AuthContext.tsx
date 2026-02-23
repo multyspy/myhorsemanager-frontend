@@ -149,6 +149,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    // Logout from RevenueCat first to prevent purchase transfers
+    try {
+      const Purchases = require('react-native-purchases').default;
+      await Purchases.logOut();
+      console.log('RevenueCat: Logged out successfully');
+    } catch (error) {
+      console.log('RevenueCat: Could not logout:', error);
+    }
+    
     setToken(null);
     setUser(null);
     api.setToken(null);
