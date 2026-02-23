@@ -8,6 +8,7 @@ import {
   Platform,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,54 +20,56 @@ import { FREE_LIMITS } from '../src/utils/subscriptionLimits';
 export default function MyPlanScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { isProUser, customerInfo, loading, restorePurchases, premiumExpiresAt, premiumSource, isAdmin, refreshSubscriptionStatus } = useSubscription();
+  
+  // Lee directamente del estado global (fuente de verdad)
+  const { 
+    isPremium,
+    activeProductId,
+    renewalDate,
+    planType,
+    willRenew,
+    loading, 
+    restorePurchases, 
+    isAdmin, 
+    premiumSource,
+    refreshSubscriptionStatus,
+    currentAppUserId,
+  } = useSubscription();
 
-  // Refresh subscription status when screen loads
+  // Refresh al cargar la pantalla
   useEffect(() => {
     refreshSubscriptionStatus();
   }, []);
 
-  // Obtener fecha de expiración (prioriza RevenueCat, luego backend)
-  const getExpirationDate = (): string | null => {
-    // Si es admin, no tiene fecha de vencimiento
-    if (isAdmin) return null;
-    
-    // Primero intentar obtener de RevenueCat (check multiple entitlement names)
-    const activeEntitlements = customerInfo?.entitlements?.active;
-    if (activeEntitlements) {
-      const entitlement = activeEntitlements['pro'] || 
-                          activeEntitlements['Pro'] || 
-                          activeEntitlements['premium'] ||
-                          activeEntitlements['Premium'] ||
-                          activeEntitlements['My Horse Manager Pro'] ||
-                          Object.values(activeEntitlements)[0];
-      if (entitlement?.expirationDate) {
-        return new Date(entitlement.expirationDate).toLocaleDateString();
-      }
+  // Formatear fecha de renovación
+  const formatRenewalDate = (date: Date | null): string | null => {
+    if (!date) return null;
+    try {
+      return date.toLocaleDateString('es-ES', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return date.toISOString();
     }
-    
-    // Si no hay RevenueCat, usar la fecha del backend
-    if (premiumExpiresAt) {
-      return new Date(premiumExpiresAt).toLocaleDateString();
-    }
-    
-    return null;
   };
 
-  // Obtener fuente del premium
-  const getPremiumSourceLabel = (): string => {
-    if (isAdmin) return t('adminPremium');
-    if (premiumSource === 'manual') return t('manualPremium');
+  // Obtener etiqueta del tipo de plan (FIX 3: igualdad estricta)
+  const getPlanLabel = (): string => {
+    if (isAdmin) return 'Admin Premium';
+    if (premiumSource === 'backend') return 'Premium Manual';
     
-    // Check for any active entitlement
-    const activeEntitlements = customerInfo?.entitlements?.active;
-    if (activeEntitlements && Object.keys(activeEntitlements).length > 0) {
-      return t('subscriptionPremium');
-    }
-    return '';
+    // FIX 3: Igualdad estricta
+    if (activeProductId === 'mhm_monthly') return 'Premium Mensual';
+    if (activeProductId === 'mhm_annual') return 'Premium Anual';
+    
+    return isPremium ? 'Premium' : 'Gratuito';
   };
 
-  // Abrir gestión de suscripción
+  // Abrir gestión de suscripción (Apple/Google)
   const handleManageSubscription = () => {
     if (Platform.OS === 'ios') {
       Linking.openURL('https://apps.apple.com/account/subscriptions');
@@ -78,12 +81,10 @@ export default function MyPlanScreen() {
   // Restaurar compras
   const handleRestore = async () => {
     const success = await restorePurchases();
-    // Always refresh status after restore attempt
-    await refreshSubscriptionStatus();
     if (success) {
-      Alert.alert(t('success'), t('purchasesRestored'));
+      Alert.alert('Éxito', 'Compras restauradas correctamente');
     } else {
-      Alert.alert(t('info'), t('noPurchasesFound'));
+      Alert.alert('Info', 'No se encontraron compras anteriores');
     }
   };
 
@@ -92,8 +93,7 @@ export default function MyPlanScreen() {
     router.push('/subscription');
   };
 
-  const expirationDate = getExpirationDate();
-  const premiumSourceLabel = getPremiumSourceLabel();
+  const formattedRenewalDate = formatRenewalDate(renewalDate);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -106,138 +106,191 @@ export default function MyPlanScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Status Card */}
-        <View style={[styles.statusCard, isProUser ? styles.statusCardPremium : styles.statusCardFree]}>
-          <View style={styles.statusIconContainer}>
-            <Ionicons 
-              name={isProUser ? "star" : "star-outline"} 
-              size={40} 
-              color={isProUser ? "#FFD700" : "#999"} 
-            />
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2E7D32" />
+            <Text style={styles.loadingText}>Cargando...</Text>
           </View>
-          <Text style={[styles.statusTitle, isProUser && styles.statusTitlePremium]}>
-            {isProUser ? t('premiumPlan') : t('freePlan')}
-          </Text>
-          <View style={[styles.statusBadge, isProUser && styles.statusBadgeActive]}>
-            <Text style={[styles.statusBadgeText, isProUser && styles.statusBadgeTextActive]}>
-              {isProUser ? t('active') : t('inactive')}
-            </Text>
-          </View>
-          
-          {isProUser && premiumSourceLabel && (
-            <Text style={styles.premiumSourceText}>
-              {premiumSourceLabel}
-            </Text>
-          )}
-          
-          {isProUser && expirationDate && (
-            <Text style={styles.expirationText}>
-              {t('expiresOn')}: {expirationDate}
-            </Text>
-          )}
-          
-          {isProUser && isAdmin && (
-            <Text style={styles.adminText}>
-              ∞ {t('noExpiration')}
-            </Text>
-          )}
-        </View>
+        ) : (
+          <>
+            {/* TARJETA DE ESTADO */}
+            <View style={[styles.statusCard, isPremium ? styles.statusCardPremium : styles.statusCardFree]}>
+              
+              {/* Icono */}
+              <View style={styles.statusIconContainer}>
+                <Ionicons 
+                  name={isPremium ? "star" : "star-outline"} 
+                  size={48} 
+                  color={isPremium ? "#FFD700" : "#999"} 
+                />
+              </View>
+              
+              {/* Estado: Premium Activo / Free */}
+              <Text style={[styles.statusTitle, isPremium && styles.statusTitlePremium]}>
+                {isPremium ? 'Premium Activo' : 'Plan Gratuito'}
+              </Text>
+              
+              {/* Badge Activo/Inactivo */}
+              <View style={[styles.statusBadge, isPremium && styles.statusBadgeActive]}>
+                <Text style={[styles.statusBadgeText, isPremium && styles.statusBadgeTextActive]}>
+                  {isPremium ? 'ACTIVO' : 'INACTIVO'}
+                </Text>
+              </View>
+              
+              {/* Plan: Mensual / Anual */}
+              {isPremium && !isAdmin && (
+                <View style={styles.planTypeContainer}>
+                  <Ionicons 
+                    name={planType === 'annual' ? 'calendar' : 'calendar-outline'} 
+                    size={18} 
+                    color={isPremium ? '#fff' : '#666'} 
+                  />
+                  <Text style={[styles.planTypeText, isPremium && styles.planTypeTextPremium]}>
+                    Plan: {planType === 'monthly' ? 'Mensual' : planType === 'annual' ? 'Anual' : 'N/A'}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Renueva el: fecha */}
+              {isPremium && formattedRenewalDate && !isAdmin && (
+                <View style={styles.renewalContainer}>
+                  <Ionicons name="refresh-circle" size={18} color="rgba(255,255,255,0.9)" />
+                  <Text style={styles.renewalText}>
+                    {willRenew ? 'Renueva el:' : 'Expira el:'} {formattedRenewalDate}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Estado de auto-renovación */}
+              {isPremium && !isAdmin && premiumSource === 'revenuecat' && (
+                <Text style={styles.autoRenewText}>
+                  {willRenew 
+                    ? '✓ Renovación automática activa' 
+                    : '✗ Renovación automática desactivada'}
+                </Text>
+              )}
+              
+              {/* Admin: acceso ilimitado */}
+              {isPremium && isAdmin && (
+                <View style={styles.adminContainer}>
+                  <Ionicons name="infinite" size={24} color="#FFD700" />
+                  <Text style={styles.adminText}>Acceso ilimitado como Admin</Text>
+                </View>
+              )}
+              
+              {/* Fuente del premium */}
+              {isPremium && premiumSource && (
+                <Text style={styles.sourceText}>
+                  {premiumSource === 'revenuecat' ? 'Suscripción App Store' : 
+                   premiumSource === 'admin' ? 'Acceso de administrador' : 
+                   premiumSource === 'backend' ? 'Asignado manualmente' : ''}
+                </Text>
+              )}
+            </View>
 
-        {/* Límites actuales */}
-        <View style={styles.limitsSection}>
-          <Text style={styles.sectionTitle}>{t('yourLimits')}</Text>
-          
-          <View style={styles.limitItem}>
-            <Ionicons name="fitness-outline" size={24} color="#8B4513" />
-            <Text style={styles.limitText}>{t('horses')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.horses}`}
-            </Text>
-          </View>
+            {/* LÍMITES */}
+            <View style={styles.limitsSection}>
+              <Text style={styles.sectionTitle}>{t('yourLimits')}</Text>
+              
+              <View style={styles.limitItem}>
+                <Ionicons name="fitness-outline" size={24} color="#8B4513" />
+                <Text style={styles.limitText}>{t('horses')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.horses}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="person-outline" size={24} color="#1976D2" />
-            <Text style={styles.limitText}>{t('riders')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.riders}`}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="person-outline" size={24} color="#1976D2" />
+                <Text style={styles.limitText}>{t('riders')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.riders}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="business-outline" size={24} color="#7B1FA2" />
-            <Text style={styles.limitText}>{t('suppliers')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.suppliers}`}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="business-outline" size={24} color="#7B1FA2" />
+                <Text style={styles.limitText}>{t('suppliers')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.suppliers}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="trophy-outline" size={24} color="#FFC107" />
-            <Text style={styles.limitText}>{t('competitions')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.competitions}`}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="trophy-outline" size={24} color="#FFC107" />
+                <Text style={styles.limitText}>{t('competitions')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.competitions}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="medal-outline" size={24} color="#FF9800" />
-            <Text style={styles.limitText}>{t('palmares')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.palmares}`}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="medal-outline" size={24} color="#FF9800" />
+                <Text style={styles.limitText}>{t('palmares')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.palmares}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="cash-outline" size={24} color="#4CAF50" />
-            <Text style={styles.limitText}>{t('expenses')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.expenses}`}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="cash-outline" size={24} color="#4CAF50" />
+                <Text style={styles.limitText}>{t('expenses')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.expenses}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="notifications-outline" size={24} color="#F44336" />
-            <Text style={styles.limitText}>{t('reminders')}</Text>
-            <Text style={styles.limitValue}>
-              {isProUser ? t('unlimited') : `${FREE_LIMITS.reminders}`}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="notifications-outline" size={24} color="#F44336" />
+                <Text style={styles.limitText}>{t('reminders')}</Text>
+                <Text style={styles.limitValue}>
+                  {isPremium ? '∞' : FREE_LIMITS.reminders}
+                </Text>
+              </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="download-outline" size={24} color="#607D8B" />
-            <Text style={styles.limitText}>{t('exportCSV')}</Text>
-            <Text style={[styles.limitValue, !isProUser && styles.limitValueRestricted]}>
-              {isProUser ? '✓' : '✗'}
-            </Text>
-          </View>
+              <View style={styles.limitItem}>
+                <Ionicons name="download-outline" size={24} color="#607D8B" />
+                <Text style={styles.limitText}>Exportar CSV</Text>
+                <Text style={[styles.limitValue, !isPremium && styles.limitValueRestricted]}>
+                  {isPremium ? '✓' : '✗'}
+                </Text>
+              </View>
+            </View>
 
-          <View style={styles.limitItem}>
-            <Ionicons name="stats-chart-outline" size={24} color="#9C27B0" />
-            <Text style={styles.limitText}>{t('advancedReports')}</Text>
-            <Text style={[styles.limitValue, !isProUser && styles.limitValueRestricted]}>
-              {isProUser ? '✓' : '✗'}
-            </Text>
-          </View>
-        </View>
+            {/* BOTONES */}
+            <View style={styles.actionsSection}>
+              {!isPremium ? (
+                <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
+                  <Ionicons name="star" size={24} color="#fff" />
+                  <Text style={styles.upgradeButtonText}>Actualizar a Premium</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.manageButton} onPress={handleManageSubscription}>
+                  <Ionicons name="settings-outline" size={24} color="#2E7D32" />
+                  <Text style={styles.manageButtonText}>Gestionar suscripción</Text>
+                </TouchableOpacity>
+              )}
 
-        {/* Botones de acción */}
-        <View style={styles.actionsSection}>
-          {!isProUser ? (
-            <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
-              <Ionicons name="star" size={24} color="#fff" />
-              <Text style={styles.upgradeButtonText}>{t('upgradeToPremium')}</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.manageButton} onPress={handleManageSubscription}>
-              <Ionicons name="settings-outline" size={24} color="#2E7D32" />
-              <Text style={styles.manageButtonText}>{t('manageSubscription')}</Text>
-            </TouchableOpacity>
-          )}
+              <TouchableOpacity style={styles.restoreButton} onPress={handleRestore} disabled={loading}>
+                <Text style={styles.restoreButtonText}>Restaurar compras</Text>
+              </TouchableOpacity>
+            </View>
 
-          <TouchableOpacity style={styles.restoreButton} onPress={handleRestore} disabled={loading}>
-            <Text style={styles.restoreButtonText}>{t('restorePurchases')}</Text>
-          </TouchableOpacity>
-        </View>
+            {/* DEBUG (solo en desarrollo) */}
+            {__DEV__ && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugTitle}>🔧 Debug Info</Text>
+                <Text style={styles.debugText}>App User ID: {currentAppUserId || 'N/A'}</Text>
+                <Text style={styles.debugText}>isPremium: {isPremium ? 'true' : 'false'}</Text>
+                <Text style={styles.debugText}>planType: {planType || 'N/A'}</Text>
+                <Text style={styles.debugText}>productId: {activeProductId || 'N/A'}</Text>
+                <Text style={styles.debugText}>willRenew: {willRenew ? 'true' : 'false'}</Text>
+                <Text style={styles.debugText}>premiumSource: {premiumSource || 'N/A'}</Text>
+                <Text style={styles.debugText}>renewalDate: {renewalDate?.toISOString() || 'N/A'}</Text>
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -267,11 +320,27 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#666',
+    fontSize: 16,
+  },
   statusCard: {
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 20,
+    padding: 28,
     alignItems: 'center',
     marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
   statusCardFree: {
     backgroundColor: '#fff',
@@ -282,62 +351,103 @@ const styles = StyleSheet.create({
     backgroundColor: '#2E7D32',
   },
   statusIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
   statusTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   statusTitlePremium: {
     color: '#fff',
   },
   statusBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#e0e0e0',
+    marginBottom: 16,
   },
   statusBadgeActive: {
     backgroundColor: '#4CAF50',
   },
   statusBadgeText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#666',
+    letterSpacing: 1,
   },
   statusBadgeTextActive: {
     color: '#fff',
   },
-  premiumSourceText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 8,
-    fontStyle: 'italic',
+  planTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 8,
+    marginBottom: 12,
   },
-  expirationText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
+  planTypeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  planTypeTextPremium: {
+    color: '#fff',
+  },
+  renewalContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  renewalText: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '500',
+  },
+  autoRenewText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  adminContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginTop: 8,
   },
   adminText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#FFD700',
-    marginTop: 8,
     fontWeight: 'bold',
+  },
+  sourceText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
   limitsSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 18,
@@ -348,7 +458,7 @@ const styles = StyleSheet.create({
   limitItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -356,27 +466,32 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#333',
-    marginLeft: 12,
+    marginLeft: 14,
   },
   limitValue: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#2E7D32',
   },
   limitValueRestricted: {
     color: '#F44336',
   },
   actionsSection: {
-    marginBottom: 40,
+    marginBottom: 24,
   },
   upgradeButton: {
     backgroundColor: '#2E7D32',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
+    padding: 18,
+    borderRadius: 14,
+    gap: 10,
+    shadowColor: '#2E7D32',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
   },
   upgradeButtonText: {
     color: '#fff',
@@ -388,15 +503,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
+    padding: 18,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: '#2E7D32',
-    gap: 8,
+    gap: 10,
   },
   manageButtonText: {
     color: '#2E7D32',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
   restoreButton: {
@@ -406,7 +521,27 @@ const styles = StyleSheet.create({
   },
   restoreButtonText: {
     color: '#666',
-    fontSize: 14,
+    fontSize: 15,
     textDecorationLine: 'underline',
+  },
+  debugSection: {
+    backgroundColor: '#fff3e0',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 40,
+    borderWidth: 1,
+    borderColor: '#ffcc80',
+  },
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#e65100',
+    marginBottom: 10,
+  },
+  debugText: {
+    fontSize: 11,
+    color: '#bf360c',
+    marginBottom: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });
