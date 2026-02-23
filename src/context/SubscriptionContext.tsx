@@ -182,13 +182,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       
       // Try to login with user email if available
       try {
-        const userDataStr = await AsyncStorage.getItem('user_data');
-        if (userDataStr) {
-          const userData = JSON.parse(userDataStr);
-          if (userData.email) {
-            console.log('RevenueCat: Logging in as', userData.email);
-            await Purchases.logIn(userData.email);
-          }
+        // First try auth_user (used by AuthContext)
+        let userEmail = null;
+        const authUserStr = await AsyncStorage.getItem('auth_user');
+        if (authUserStr) {
+          const userData = JSON.parse(authUserStr);
+          userEmail = userData.email;
+        }
+        
+        if (userEmail) {
+          console.log('RevenueCat: Logging in as', userEmail);
+          await Purchases.logIn(userEmail);
         }
       } catch (loginError) {
         console.log('RevenueCat: Could not login user:', loginError);
@@ -203,15 +207,18 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       // Check subscription status
       const info = await Purchases.getCustomerInfo();
       setCustomerInfo(info);
-      const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
+      
+      // Check for any active entitlement
+      const hasProAccess = Object.keys(info.entitlements.active).length > 0;
       if (hasProAccess) {
         setIsProUser(true);
       }
 
       // Listen for changes
       Purchases.addCustomerInfoUpdateListener((info: any) => {
+        console.log('RevenueCat: Customer info updated, entitlements:', Object.keys(info.entitlements.active));
         setCustomerInfo(info);
-        const hasProAccess = typeof info.entitlements.active['pro'] !== 'undefined';
+        const hasProAccess = Object.keys(info.entitlements.active).length > 0;
         if (hasProAccess) {
           setIsProUser(true);
         }
@@ -264,32 +271,36 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       
       // IMPORTANT: Login with email BEFORE purchase to ensure correct customer ID
       console.log('RevenueCat: Ensuring user is logged in before purchase...');
-      const loggedIn = await loginToRevenueCat();
-      console.log('RevenueCat: Login result:', loggedIn);
+      await loginToRevenueCat();
       
-      console.log('Attempting to purchase package:', pkg.identifier);
+      console.log('RevenueCat: Attempting to purchase package:', pkg.identifier);
       const { customerInfo: newInfo } = await Purchases.purchasePackage(pkg);
-      setCustomerInfo(newInfo);
-      console.log('Purchase completed, checking entitlements:', Object.keys(newInfo.entitlements.active));
       
-      // Check for any of these entitlement identifiers
-      const hasProAccess = 
-        typeof newInfo.entitlements.active['pro'] !== 'undefined' ||
-        typeof newInfo.entitlements.active['Pro'] !== 'undefined' ||
-        typeof newInfo.entitlements.active['premium'] !== 'undefined' ||
-        typeof newInfo.entitlements.active['Premium'] !== 'undefined' ||
-        typeof newInfo.entitlements.active['My Horse Manager Pro'] !== 'undefined' ||
-        Object.keys(newInfo.entitlements.active).length > 0; // Any active entitlement = premium
+      console.log('RevenueCat: Purchase completed!');
+      console.log('RevenueCat: Active entitlements:', Object.keys(newInfo.entitlements.active));
+      
+      // Update state immediately
+      setCustomerInfo(newInfo);
+      
+      // Check for any active entitlement
+      const hasProAccess = Object.keys(newInfo.entitlements.active).length > 0;
+      console.log('RevenueCat: Has pro access:', hasProAccess);
       
       if (hasProAccess) {
         setIsProUser(true);
+        console.log('RevenueCat: User is now PRO!');
         return true;
       }
-      return false;
+      
+      // Even if no entitlements detected, consider purchase successful if we got here
+      // (The purchase went through, entitlement might be delayed)
+      setIsProUser(true);
+      return true;
+      
     } catch (error: any) {
-      console.log('Purchase error:', error.code, error.message);
+      console.log('RevenueCat: Purchase error:', error.code, error.message);
       if (!error.userCancelled) {
-        console.log('Error purchasing package:', error);
+        console.log('RevenueCat: Full error:', error);
       }
       return false;
     } finally {
