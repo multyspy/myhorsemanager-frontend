@@ -31,11 +31,17 @@ export default function MyPlanScreen() {
     // Si es admin, no tiene fecha de vencimiento
     if (isAdmin) return null;
     
-    // Primero intentar obtener de RevenueCat
-    if (customerInfo?.entitlements?.active?.pro) {
-      const expirationDate = customerInfo.entitlements.active.pro.expirationDate;
-      if (expirationDate) {
-        return new Date(expirationDate).toLocaleDateString();
+    // Primero intentar obtener de RevenueCat (check multiple entitlement names)
+    const activeEntitlements = customerInfo?.entitlements?.active;
+    if (activeEntitlements) {
+      const entitlement = activeEntitlements['pro'] || 
+                          activeEntitlements['Pro'] || 
+                          activeEntitlements['premium'] ||
+                          activeEntitlements['Premium'] ||
+                          activeEntitlements['My Horse Manager Pro'] ||
+                          Object.values(activeEntitlements)[0];
+      if (entitlement?.expirationDate) {
+        return new Date(entitlement.expirationDate).toLocaleDateString();
       }
     }
     
@@ -51,7 +57,12 @@ export default function MyPlanScreen() {
   const getPremiumSourceLabel = (): string => {
     if (isAdmin) return t('adminPremium');
     if (premiumSource === 'manual') return t('manualPremium');
-    if (customerInfo?.entitlements?.active?.pro) return t('subscriptionPremium');
+    
+    // Check for any active entitlement
+    const activeEntitlements = customerInfo?.entitlements?.active;
+    if (activeEntitlements && Object.keys(activeEntitlements).length > 0) {
+      return t('subscriptionPremium');
+    }
     return '';
   };
 
