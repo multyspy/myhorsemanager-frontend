@@ -84,25 +84,45 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     
     try {
       const Purchases = require('react-native-purchases').default;
-      const userDataStr = await AsyncStorage.getItem('user_data');
       
-      if (userDataStr) {
-        const userData = JSON.parse(userDataStr);
-        if (userData.email) {
-          console.log('RevenueCat: Setting customer ID to', userData.email);
-          const { customerInfo } = await Purchases.logIn(userData.email);
-          setCustomerInfo(customerInfo);
-          
-          // Check if user has active entitlements
-          const hasProAccess = Object.keys(customerInfo.entitlements.active).length > 0;
-          if (hasProAccess) {
-            setIsProUser(true);
-          }
-          console.log('RevenueCat: Customer ID set successfully');
+      // Try both possible storage keys for user data
+      let userEmail = null;
+      
+      // First try auth_user (used by AuthContext)
+      const authUserStr = await AsyncStorage.getItem('auth_user');
+      if (authUserStr) {
+        const userData = JSON.parse(authUserStr);
+        userEmail = userData.email;
+      }
+      
+      // Fallback to user_data
+      if (!userEmail) {
+        const userDataStr = await AsyncStorage.getItem('user_data');
+        if (userDataStr) {
+          const userData = JSON.parse(userDataStr);
+          userEmail = userData.email;
         }
+      }
+      
+      if (userEmail) {
+        console.log('RevenueCat: Setting customer ID to', userEmail);
+        const { customerInfo } = await Purchases.logIn(userEmail);
+        setCustomerInfo(customerInfo);
+        
+        // Check if user has active entitlements
+        const hasProAccess = Object.keys(customerInfo.entitlements.active).length > 0;
+        if (hasProAccess) {
+          setIsProUser(true);
+        }
+        console.log('RevenueCat: Customer ID set successfully to', userEmail);
+        return true;
+      } else {
+        console.log('RevenueCat: No user email found in storage');
+        return false;
       }
     } catch (error) {
       console.log('RevenueCat: Error setting customer ID:', error);
+      return false;
     }
   }, [isConfigured]);
 
@@ -241,6 +261,12 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     try {
       setLoading(true);
       const Purchases = require('react-native-purchases').default;
+      
+      // IMPORTANT: Login with email BEFORE purchase to ensure correct customer ID
+      console.log('RevenueCat: Ensuring user is logged in before purchase...');
+      const loggedIn = await loginToRevenueCat();
+      console.log('RevenueCat: Login result:', loggedIn);
+      
       console.log('Attempting to purchase package:', pkg.identifier);
       const { customerInfo: newInfo } = await Purchases.purchasePackage(pkg);
       setCustomerInfo(newInfo);
