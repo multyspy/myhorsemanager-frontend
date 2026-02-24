@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Platform, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 
 // RevenueCat API Keys
@@ -9,28 +8,42 @@ const REVENUECAT_API_KEYS = {
   google: 'goog_SFalMPsWHncznFlnQHiHZYQabDO',
 };
 
-// Entitlement identifier en RevenueCat
-const ENTITLEMENT_ID = 'My Horse Manager Pro';
-
-// Product IDs exactos (igualdad estricta)
+// Product IDs exactos - COMPARACIÓN ESTRICTA
 const PRODUCT_ID_MONTHLY = 'mhm_monthly';
 const PRODUCT_ID_ANNUAL = 'mhm_annual';
 
-interface SubscriptionState {
+// Admin emails (hardcoded para override)
+const ADMIN_EMAILS = ['prueba@prueba.com'];
+
+// ============================================
+// TIPOS - EXPORTADOS
+// ============================================
+export type SubscriptionStatus = 'loading' | 'free' | 'premium';
+
+interface SubscriptionContextType {
+  // ESTADO PRINCIPAL - Fuente de verdad
+  subscriptionStatus: SubscriptionStatus;
+  
+  // Alias para compatibilidad
   isPremium: boolean;
+  isProUser: boolean;
+  
+  // Detalles de la suscripción
   activeProductId: string | null;
   renewalDate: Date | null;
   planType: 'monthly' | 'annual' | null;
   willRenew: boolean;
-}
-
-interface SubscriptionContextType extends SubscriptionState {
+  
+  // Otros estados
   offerings: any | null;
   loading: boolean;
   isConfigured: boolean;
   currentAppUserId: string | null;
+  originalAppUserId: string | null;
   isAdmin: boolean;
   premiumSource: 'revenuecat' | 'admin' | 'backend' | null;
+  
+  // Funciones
   purchasePackage: (pkg: any) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   refreshSubscriptionStatus: () => Promise<void>;
@@ -53,151 +66,133 @@ interface SubscriptionProviderProps {
 export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ children }) => {
   const { user, token } = useAuth();
   
-  // Estado central de suscripción
-  const [subscriptionState, setSubscriptionState] = useState<SubscriptionState>({
-    isPremium: false,
-    activeProductId: null,
-    renewalDate: null,
-    planType: null,
-    willRenew: false,
-  });
+  // ============================================
+  // ESTADO PRINCIPAL: loading | free | premium
+  // ============================================
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('loading');
   
+  // Detalles de suscripción
+  const [activeProductId, setActiveProductId] = useState<string | null>(null);
+  const [renewalDate, setRenewalDate] = useState<Date | null>(null);
+  const [planType, setPlanType] = useState<'monthly' | 'annual' | null>(null);
+  const [willRenew, setWillRenew] = useState(false);
+  
+  // Otros estados
   const [offerings, setOfferings] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
   const [currentAppUserId, setCurrentAppUserId] = useState<string | null>(null);
+  const [originalAppUserId, setOriginalAppUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [premiumSource, setPremiumSource] = useState<'revenuecat' | 'admin' | 'backend' | null>(null);
   
   const configuredRef = useRef(false);
   const previousUserIdRef = useRef<string | null>(null);
+  const listenerAddedRef = useRef(false);
 
   // ============================================
-  // FIX 1: Usar user.id interno (NO email)
+  // HELPERS
   // ============================================
+  
+  // Obtener user.id estable (NO email) - NUNCA usar email
   const getStableUserId = useCallback((): string | null => {
-    // IMPORTANTE: Usar el ID de la base de datos, NO el email
-    if (user && user.id) {
-      console.log('RevenueCat: Using stable user ID:', user.id);
-      return user.id;
-    }
-    return null;
+    return user?.id || null;
   }, [user]);
 
-  // ============================================
-  // FIX 3 y 4: Detección de plan con igualdad estricta
-  // y selección del entitlement correcto
-  // ============================================
-  const detectPlanType = (productId: string): 'monthly' | 'annual' | null => {
-    // FIX 3: Igualdad estricta, no includes
+  // Verificar si es admin por email
+  const checkIsAdmin = useCallback((): boolean => {
+    if (user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+      return true;
+    }
+    return false;
+  }, [user]);
+
+  // Detectar tipo de plan - COMPARACIÓN ESTRICTA (sin includes)
+  // Función pura, no necesita useCallback
+  const detectPlanType = useCallback((productId: string): 'monthly' | 'annual' | null => {
     if (productId === PRODUCT_ID_MONTHLY) return 'monthly';
     if (productId === PRODUCT_ID_ANNUAL) return 'annual';
     return null;
-  };
-
-  // FIX 4: Seleccionar el entitlement activo correcto (el de expiración más lejana)
-  const selectBestEntitlement = (activeEntitlements: Record<string, any>): any | null => {
-    const entitlementKeys = Object.keys(activeEntitlements);
-    
-    if (entitlementKeys.length === 0) return null;
-    if (entitlementKeys.length === 1) return activeEntitlements[entitlementKeys[0]];
-    
-    // Si hay varios, elegir el de expirationDate más lejana
-    let bestEntitlement: any = null;
-    let latestExpiration: Date | null = null;
-    
-    for (const key of entitlementKeys) {
-      const ent = activeEntitlements[key];
-      if (ent.expirationDate) {
-        const expDate = new Date(ent.expirationDate);
-        if (!latestExpiration || expDate > latestExpiration) {
-          latestExpiration = expDate;
-          bestEntitlement = ent;
-        }
-      } else if (!bestEntitlement) {
-        // Si no tiene fecha, tomarlo solo si no hay otro mejor
-        bestEntitlement = ent;
-      }
-    }
-    
-    return bestEntitlement || activeEntitlements[entitlementKeys[0]];
-  };
-
-  // FUNCIÓN PRINCIPAL: Obtiene CustomerInfo y actualiza el estado global
-  const fetchCustomerInfo = useCallback(async () => {
-    if (!configuredRef.current) {
-      console.log('RevenueCat: Not configured, cannot fetch customer info');
-      return null;
-    }
-
-    try {
-      const Purchases = require('react-native-purchases').default;
-      const customerInfo = await Purchases.getCustomerInfo();
-      
-      console.log('RevenueCat: CustomerInfo fetched');
-      console.log('RevenueCat: App User ID:', customerInfo.originalAppUserId);
-      setCurrentAppUserId(customerInfo.originalAppUserId);
-      
-      // Verificar entitlements activos
-      const activeEntitlements = customerInfo.entitlements?.active || {};
-      console.log('RevenueCat: Active entitlements:', Object.keys(activeEntitlements));
-      
-      // FIX 4: Seleccionar el mejor entitlement
-      const entitlement = selectBestEntitlement(activeEntitlements);
-      
-      if (entitlement) {
-        const productId = entitlement.productIdentifier || '';
-        
-        // FIX 3: Usar igualdad estricta para detectar plan
-        const planType = detectPlanType(productId);
-        
-        // La fecha de expiración es la fecha de renovación (viene de RevenueCat)
-        let renewalDate: Date | null = null;
-        if (entitlement.expirationDate) {
-          renewalDate = new Date(entitlement.expirationDate);
-        }
-        
-        console.log('RevenueCat: Premium ACTIVE');
-        console.log('RevenueCat: Product ID:', productId);
-        console.log('RevenueCat: Plan Type:', planType);
-        console.log('RevenueCat: Renewal Date:', renewalDate);
-        console.log('RevenueCat: Will Renew:', entitlement.willRenew);
-        
-        setSubscriptionState({
-          isPremium: true,
-          activeProductId: productId,
-          renewalDate: renewalDate,
-          planType: planType,
-          willRenew: entitlement.willRenew !== false,
-        });
-        setPremiumSource('revenuecat');
-        
-      } else {
-        // Usuario sin suscripción activa
-        console.log('RevenueCat: No active entitlements - FREE user');
-        
-        setSubscriptionState({
-          isPremium: false,
-          activeProductId: null,
-          renewalDate: null,
-          planType: null,
-          willRenew: false,
-        });
-        setPremiumSource(null);
-      }
-      
-      return customerInfo;
-      
-    } catch (error) {
-      console.log('RevenueCat: Error fetching customer info:', error);
-      return null;
-    }
   }, []);
 
-  // Configurar RevenueCat (solo una vez al iniciar)
-  const configureRevenueCat = useCallback(async () => {
+  // Seleccionar el mejor entitlement (el de expiración más lejana)
+  // Función pura, no necesita dependencias
+  const selectBestEntitlement = useCallback((activeEntitlements: Record<string, any>): any | null => {
+    const keys = Object.keys(activeEntitlements);
+    if (keys.length === 0) return null;
+    if (keys.length === 1) return activeEntitlements[keys[0]];
+    
+    let best: any = null;
+    let latestExp: Date | null = null;
+    
+    for (const key of keys) {
+      const ent = activeEntitlements[key];
+      if (ent.expirationDate) {
+        const exp = new Date(ent.expirationDate);
+        if (!latestExp || exp > latestExp) {
+          latestExp = exp;
+          best = ent;
+        }
+      } else if (!best) {
+        best = ent;
+      }
+    }
+    
+    return best || activeEntitlements[keys[0]];
+  }, []);
+
+  // Procesar customerInfo y actualizar estado
+  const processCustomerInfo = useCallback((customerInfo: any): SubscriptionStatus => {
+    // Guardar IDs para depuración
+    const appId = customerInfo.appUserId || null;
+    const origId = customerInfo.originalAppUserId || null;
+    
+    console.log('RC: appUserId:', appId);
+    console.log('RC: originalAppUserId:', origId);
+    
+    setCurrentAppUserId(appId);
+    setOriginalAppUserId(origId);
+    
+    // Evaluar entitlements
+    const activeEntitlements = customerInfo.entitlements?.active || {};
+    console.log('RC: Active entitlements:', Object.keys(activeEntitlements));
+    
+    const entitlement = selectBestEntitlement(activeEntitlements);
+    
+    if (entitlement) {
+      const productId = entitlement.productIdentifier || '';
+      const type = detectPlanType(productId);
+      const renewal = entitlement.expirationDate ? new Date(entitlement.expirationDate) : null;
+      
+      console.log('RC: PREMIUM - Product:', productId, 'Type:', type);
+      
+      setActiveProductId(productId);
+      setPlanType(type);
+      setRenewalDate(renewal);
+      setWillRenew(entitlement.willRenew !== false);
+      setPremiumSource('revenuecat');
+      setSubscriptionStatus('premium');
+      
+      return 'premium';
+    } else {
+      console.log('RC: No entitlements -> Free');
+      setActiveProductId(null);
+      setPlanType(null);
+      setRenewalDate(null);
+      setWillRenew(false);
+      setPremiumSource(null);
+      setSubscriptionStatus('free');
+      
+      return 'free';
+    }
+  }, [selectBestEntitlement, detectPlanType]);
+
+  // ============================================
+  // CONFIGURACIÓN DE REVENUECAT
+  // ============================================
+  const configureRevenueCat = useCallback(async (): Promise<boolean> => {
     if (configuredRef.current) {
-      console.log('RevenueCat: Already configured');
+      console.log('RC: Already configured');
       return true;
     }
 
@@ -206,180 +201,177 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       : REVENUECAT_API_KEYS.google;
 
     if (apiKey.includes('xxxxxxxxx')) {
-      console.log('RevenueCat: API keys not configured');
+      console.log('RC: API keys not configured');
       return false;
     }
 
     try {
       const Purchases = require('react-native-purchases').default;
       
-      console.log('RevenueCat: Configuring...');
+      console.log('RC: Configuring...');
       await Purchases.configure({ apiKey });
       
       configuredRef.current = true;
       setIsConfigured(true);
-      console.log('RevenueCat: Configured successfully');
+      console.log('RC: Configured OK');
       
-      // Listener para cambios en CustomerInfo
-      Purchases.addCustomerInfoUpdateListener((info: any) => {
-        console.log('RevenueCat: CustomerInfo updated via listener');
-        fetchCustomerInfo();
-      });
+      // ============================================
+      // LISTENER GLOBAL DE ACTUALIZACIÓN
+      // ============================================
+      if (!listenerAddedRef.current) {
+        Purchases.addCustomerInfoUpdateListener((customerInfo: any) => {
+          console.log('=== RC LISTENER: Customer Info Updated ===');
+          // Recalcular estado sin hacer logIn
+          processCustomerInfo(customerInfo);
+        });
+        listenerAddedRef.current = true;
+        console.log('RC: CustomerInfo listener added');
+      }
       
       return true;
     } catch (error) {
-      console.log('RevenueCat: Configuration error:', error);
+      console.log('RC: Configure error:', error);
       return false;
     }
-  }, [fetchCustomerInfo]);
+  }, [processCustomerInfo]);
 
-  // FIX 1: Login a RevenueCat con user.id (NO email)
-  const loginToRevenueCat = useCallback(async (userId: string) => {
-    if (!configuredRef.current) return null;
-
+  // ============================================
+  // FLUJO PRINCIPAL: RESOLVER ESTADO DE SUSCRIPCIÓN
+  // Retorna Promise<SubscriptionStatus> - NUNCA void
+  // manageLoading: si true, maneja setLoading(false) en finally
+  // ============================================
+  const resolveSubscriptionStatus = useCallback(async (
+    userId: string | null, 
+    manageLoading: boolean = true
+  ): Promise<SubscriptionStatus> => {
+    console.log('=== RESOLVING SUBSCRIPTION STATUS ===');
+    console.log('User ID:', userId, '| manageLoading:', manageLoading);
+    
     try {
+      // 1. Si es admin, siempre es premium (prioridad máxima)
+      const userIsAdmin = checkIsAdmin();
+      if (userIsAdmin) {
+        console.log('User is ADMIN -> Premium');
+        setIsAdmin(true);
+        setPremiumSource('admin');
+        setSubscriptionStatus('premium');
+        return 'premium';
+      }
+      
+      // 2. Si no hay usuario logueado o no hay RC configurado -> free
+      if (!userId) {
+        console.log('No user ID -> Free');
+        setSubscriptionStatus('free');
+        return 'free';
+      }
+      
+      if (!configuredRef.current) {
+        console.log('RC not configured -> Free');
+        setSubscriptionStatus('free');
+        return 'free';
+      }
+      
       const Purchases = require('react-native-purchases').default;
       
-      // FIX 1: Usar ID interno, no email
-      console.log('RevenueCat: Logging in with stable user ID:', userId);
+      // 3. FORZAR Login a RevenueCat con user.id
+      console.log('RC: Forcing logIn as:', userId);
       const { customerInfo } = await Purchases.logIn(userId);
       
-      console.log('RevenueCat: Login successful, App User ID now:', customerInfo.originalAppUserId);
-      setCurrentAppUserId(customerInfo.originalAppUserId);
+      // 4. Procesar customerInfo y retornar estado
+      const status = processCustomerInfo(customerInfo);
+      return status;
       
-      // Después de login, actualizar estado
-      await fetchCustomerInfo();
-      
-      return customerInfo;
     } catch (error) {
-      console.log('RevenueCat: Login error:', error);
-      return null;
+      console.log('RC: Error resolving status:', error);
+      setSubscriptionStatus('free');
+      return 'free';
+    } finally {
+      // Solo manejar loading si se solicita (evita doble setLoading)
+      if (manageLoading) {
+        setLoading(false);
+      }
     }
-  }, [fetchCustomerInfo]);
+  }, [checkIsAdmin, processCustomerInfo]);
 
-  // Logout de RevenueCat
-  const logoutFromRevenueCat = useCallback(async () => {
-    if (!configuredRef.current) return;
-
-    try {
-      const Purchases = require('react-native-purchases').default;
-      
-      console.log('RevenueCat: Logging out...');
-      await Purchases.logOut();
-      
-      // Limpiar estado completamente
-      setSubscriptionState({
-        isPremium: false,
-        activeProductId: null,
-        renewalDate: null,
-        planType: null,
-        willRenew: false,
-      });
-      setPremiumSource(null);
-      setCurrentAppUserId(null);
-      setIsAdmin(false);
-      
-      console.log('RevenueCat: Logged out, state cleared');
-    } catch (error) {
-      console.log('RevenueCat: Logout error:', error);
-    }
-  }, []);
-
-  // Obtener offerings
+  // ============================================
+  // OBTENER OFFERINGS
+  // ============================================
   const fetchOfferings = useCallback(async () => {
-    if (!configuredRef.current) return null;
+    if (!configuredRef.current) return;
 
     try {
       const Purchases = require('react-native-purchases').default;
       const fetchedOfferings = await Purchases.getOfferings();
       
       if (fetchedOfferings.current) {
-        console.log('RevenueCat: Offerings loaded');
+        console.log('RC: Offerings loaded');
         setOfferings(fetchedOfferings.current);
       }
-      
-      return fetchedOfferings;
     } catch (error) {
-      console.log('RevenueCat: Error fetching offerings:', error);
-      return null;
+      console.log('RC: Error fetching offerings:', error);
     }
   }, []);
 
-  // Verificar estado premium del backend (para admin)
-  const checkBackendStatus = useCallback(async () => {
-    if (!token) return;
+  // ============================================
+  // LOGOUT DE REVENUECAT
+  // ============================================
+  const logoutFromRevenueCat = useCallback(async () => {
+    if (!configuredRef.current) return;
 
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/user/subscription-status`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Backend: Subscription status:', data);
-        
-        setIsAdmin(data.is_admin || false);
-        
-        // Si es admin, es premium automáticamente
-        if (data.is_admin) {
-          setSubscriptionState(prev => ({
-            ...prev,
-            isPremium: true,
-          }));
-          setPremiumSource('admin');
-        }
-        // Si tiene premium manual del backend y no tiene de RevenueCat
-        else if (data.is_premium && !subscriptionState.isPremium) {
-          setSubscriptionState(prev => ({
-            ...prev,
-            isPremium: true,
-            renewalDate: data.premium_expires_at ? new Date(data.premium_expires_at) : null,
-          }));
-          setPremiumSource('backend');
-        }
-      }
+      const Purchases = require('react-native-purchases').default;
+      console.log('RC: Logging out...');
+      await Purchases.logOut();
+      
+      // Limpiar estado
+      setSubscriptionStatus('free');
+      setActiveProductId(null);
+      setPlanType(null);
+      setRenewalDate(null);
+      setWillRenew(false);
+      setPremiumSource(null);
+      setCurrentAppUserId(null);
+      setOriginalAppUserId(null);
+      setIsAdmin(false);
+      
+      console.log('RC: Logged out, status reset to free');
     } catch (error) {
-      console.log('Backend: Error checking status:', error);
+      console.log('RC: Logout error:', error);
     }
-  }, [token, subscriptionState.isPremium]);
+  }, []);
 
-  // INICIALIZACIÓN - App Start
+  // ============================================
+  // INICIALIZACIÓN AL MONTAR
+  // ============================================
   useEffect(() => {
     const initialize = async () => {
+      console.log('=== APP INIT ===');
       setLoading(true);
+      setSubscriptionStatus('loading');
       
       // 1. Configurar RevenueCat
       const configured = await configureRevenueCat();
       if (!configured) {
+        setSubscriptionStatus('free');
         setLoading(false);
         return;
       }
-
-      // 2. Si hay usuario logueado, hacer login en RevenueCat con user.id
-      const userId = getStableUserId();
-      if (userId) {
-        console.log('Init: User found, logging in to RevenueCat with ID:', userId);
-        await loginToRevenueCat(userId);
-        previousUserIdRef.current = userId;
-      } else {
-        // Usuario anónimo - solo obtener CustomerInfo (no puede comprar)
-        console.log('Init: No user logged in, getting anonymous info');
-        await fetchCustomerInfo();
-      }
-
-      // 3. Obtener offerings
+      
+      // 2. Obtener offerings
       await fetchOfferings();
-
-      // 4. Verificar backend (para admin)
-      await checkBackendStatus();
-
-      setLoading(false);
+      
+      // 3. Resolver estado de suscripción
+      const userId = getStableUserId();
+      await resolveSubscriptionStatus(userId);
+      previousUserIdRef.current = userId;
     };
 
     initialize();
   }, []); // Solo al montar
 
-  // MANEJO DE LOGIN/LOGOUT
+  // ============================================
+  // MANEJAR CAMBIOS DE AUTH (LOGIN/LOGOUT)
+  // ============================================
   useEffect(() => {
     const handleAuthChange = async () => {
       if (!configuredRef.current) return;
@@ -389,83 +381,76 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
 
       // Usuario cerró sesión
       if (previousUserId && !newUserId) {
-        console.log('Auth: User logged out, calling RevenueCat logOut');
+        console.log('=== USER LOGGED OUT ===');
         await logoutFromRevenueCat();
         previousUserIdRef.current = null;
       }
       // Usuario inició sesión o cambió
       else if (newUserId && newUserId !== previousUserId) {
+        console.log('=== USER LOGGED IN/CHANGED ===');
+        
+        // Si había usuario anterior, logout primero
         if (previousUserId) {
-          console.log('Auth: User changed, logging out previous user first');
           await logoutFromRevenueCat();
         }
         
-        console.log('Auth: New user logged in, calling RevenueCat logIn with ID:', newUserId);
-        await loginToRevenueCat(newUserId);
-        await checkBackendStatus();
+        // Resolver estado para nuevo usuario
+        setSubscriptionStatus('loading');
+        setLoading(true);
+        await resolveSubscriptionStatus(newUserId);
         previousUserIdRef.current = newUserId;
       }
     };
 
     handleAuthChange();
-  }, [user, getStableUserId, loginToRevenueCat, logoutFromRevenueCat, checkBackendStatus]);
+  }, [user, getStableUserId, logoutFromRevenueCat, resolveSubscriptionStatus]);
 
   // ============================================
-  // FIX 2: COMPRA - Bloquear si no hay sesión
+  // COMPRAR - Requiere usuario logueado
+  // NUNCA permitir compra si userId es null
   // ============================================
   const purchasePackage = useCallback(async (pkg: any): Promise<boolean> => {
-    // FIX 2: BLOQUEAR si no hay usuario logueado
     const userId = getStableUserId();
     
+    // BLOQUEO: Nunca permitir compra sin usuario
     if (!userId) {
-      console.log('RevenueCat: BLOCKED - Cannot purchase without logged in user');
-      Alert.alert(
-        'Inicia sesión',
-        'Debes iniciar sesión para activar Premium',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Inicia sesión', 'Debes iniciar sesión para suscribirte');
       return false;
     }
 
     if (!configuredRef.current) {
-      Alert.alert('Error', 'Servicio de suscripciones no disponible');
+      Alert.alert('Error', 'Servicio no disponible');
       return false;
-    }
-
-    // Verificar que el App User ID actual coincide con nuestro userId
-    const Purchases = require('react-native-purchases').default;
-    const currentInfo = await Purchases.getCustomerInfo();
-    
-    if (currentInfo.originalAppUserId !== userId) {
-      console.log('RevenueCat: App User ID mismatch, re-logging in');
-      console.log('  Current:', currentInfo.originalAppUserId);
-      console.log('  Expected:', userId);
-      await loginToRevenueCat(userId);
     }
 
     try {
       setLoading(true);
+      const Purchases = require('react-native-purchases').default;
 
-      console.log('Purchase: Starting for package:', pkg.identifier);
-      console.log('Purchase: Product:', pkg.product?.identifier);
-      console.log('Purchase: User ID:', userId);
+      console.log('=== PURCHASE ===');
+      console.log('Package:', pkg.identifier);
+      console.log('Product ID:', pkg.product?.productIdentifier);
+      console.log('User ID:', userId);
       
-      // Realizar compra (esto abre el sheet de Apple)
+      // OBLIGATORIO: logIn ANTES de purchasePackage
+      console.log('RC: Forcing logIn before purchase...');
+      await Purchases.logIn(userId);
+      
+      // Realizar compra
       const { customerInfo } = await Purchases.purchasePackage(pkg);
       
-      console.log('Purchase: Completed successfully!');
-      console.log('Purchase: New App User ID:', customerInfo.originalAppUserId);
+      console.log('Purchase completed!');
+      console.log('RC: Post-purchase appUserId:', customerInfo.appUserId);
+      console.log('RC: Post-purchase originalAppUserId:', customerInfo.originalAppUserId);
       
-      // IMPORTANTE: Actualizar estado inmediatamente después de compra
-      await fetchCustomerInfo();
-      
-      return true;
+      // manageLoading: false para evitar doble setLoading(false)
+      const status = await resolveSubscriptionStatus(userId, false);
+      return status === 'premium';
 
     } catch (error: any) {
-      console.log('Purchase: Error:', error.code, error.message);
+      console.log('Purchase error:', error.code, error.message);
       
       if (error.userCancelled) {
-        console.log('Purchase: User cancelled');
         return false;
       }
       
@@ -474,22 +459,17 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     } finally {
       setLoading(false);
     }
-  }, [getStableUserId, fetchCustomerInfo, loginToRevenueCat]);
+  }, [getStableUserId, resolveSubscriptionStatus]);
 
   // ============================================
-  // FIX 2: RESTAURAR - Bloquear si no hay sesión
+  // RESTAURAR - Requiere usuario logueado
   // ============================================
   const restorePurchases = useCallback(async (): Promise<boolean> => {
-    // FIX 2: BLOQUEAR si no hay usuario logueado
     const userId = getStableUserId();
     
+    // BLOQUEO: Nunca restaurar sin usuario
     if (!userId) {
-      console.log('RevenueCat: BLOCKED - Cannot restore without logged in user');
-      Alert.alert(
-        'Inicia sesión',
-        'Debes iniciar sesión para restaurar compras',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Inicia sesión', 'Debes iniciar sesión para restaurar compras');
       return false;
     }
 
@@ -501,48 +481,73 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       setLoading(true);
       const Purchases = require('react-native-purchases').default;
 
-      console.log('Restore: Starting for user ID:', userId);
-      await Purchases.restorePurchases();
+      console.log('=== RESTORE ===');
+      console.log('User ID:', userId);
       
-      console.log('Restore: Completed');
+      // OBLIGATORIO: logIn ANTES de restore
+      console.log('RC: Forcing logIn before restore...');
+      await Purchases.logIn(userId);
       
-      // IMPORTANTE: Actualizar estado inmediatamente después de restaurar
-      await fetchCustomerInfo();
+      // Restaurar
+      const customerInfo = await Purchases.restorePurchases();
       
-      return subscriptionState.isPremium;
+      console.log('Restore completed!');
+      console.log('RC: Post-restore appUserId:', customerInfo.appUserId);
+      console.log('RC: Post-restore originalAppUserId:', customerInfo.originalAppUserId);
+      
+      // manageLoading: false para evitar doble setLoading(false)
+      const status = await resolveSubscriptionStatus(userId, false);
+      return status === 'premium';
 
     } catch (error: any) {
-      console.log('Restore: Error:', error);
+      console.log('Restore error:', error);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [getStableUserId, fetchCustomerInfo, subscriptionState.isPremium]);
+  }, [getStableUserId, resolveSubscriptionStatus]);
 
-  // Refresh manual del estado
+  // ============================================
+  // REFRESH MANUAL
+  // ============================================
   const refreshSubscriptionStatus = useCallback(async () => {
+    const userId = getStableUserId();
     setLoading(true);
-    await fetchCustomerInfo();
-    await checkBackendStatus();
-    setLoading(false);
-  }, [fetchCustomerInfo, checkBackendStatus]);
+    setSubscriptionStatus('loading');
+    await resolveSubscriptionStatus(userId);
+  }, [getStableUserId, resolveSubscriptionStatus]);
+
+  // ============================================
+  // VALORES DERIVADOS
+  // ============================================
+  const isPremium = subscriptionStatus === 'premium';
+  const isProUser = isPremium; // Alias para compatibilidad
 
   return (
     <SubscriptionContext.Provider
       value={{
-        // Estado de suscripción
-        isPremium: subscriptionState.isPremium,
-        activeProductId: subscriptionState.activeProductId,
-        renewalDate: subscriptionState.renewalDate,
-        planType: subscriptionState.planType,
-        willRenew: subscriptionState.willRenew,
+        // Estado principal
+        subscriptionStatus,
+        
+        // Alias
+        isPremium,
+        isProUser,
+        
+        // Detalles
+        activeProductId,
+        renewalDate,
+        planType,
+        willRenew,
+        
         // Otros
         offerings,
         loading,
         isConfigured,
         currentAppUserId,
+        originalAppUserId,
         isAdmin,
         premiumSource,
+        
         // Funciones
         purchasePackage,
         restorePurchases,

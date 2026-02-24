@@ -27,7 +27,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { compressImage } from '../src/utils/mediaUtils';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { canAddMore, shouldShowLimitPopup, FREE_LIMITS } from '../src/utils/subscriptionLimits';
 import { useRouter } from 'expo-router';
 
 const MAX_SIZE_KB = 250; // Maximum photo size in KB
@@ -52,7 +52,7 @@ interface Horse {
 export default function HorsesScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
-  const { isProUser } = useSubscription();
+  const { isProUser, subscriptionStatus } = useSubscription();
   const router = useRouter();
   const [horses, setHorses] = useState<Horse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,11 +83,12 @@ export default function HorsesScreen() {
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [viewingPhotoTitle, setViewingPhotoTitle] = useState<string>('');
 
-  // Check if user can add more horses
-  const canAddHorse = canAddMore(isProUser, 'horses', horses.length);
+  // Check if user can add more horses - now uses subscriptionStatus
+  const canAddHorse = canAddMore(subscriptionStatus, 'horses', horses.length);
 
   const handleAddHorse = () => {
-    if (!canAddHorse) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'horses', horses.length)) {
       Alert.alert(
         t('limitReached').replace('{limit}', String(FREE_LIMITS.horses)),
         t('upgradeToAdd'),
@@ -152,10 +153,8 @@ export default function HorsesScreen() {
   };
 
   const openAddModal = () => {
-    // Verificar límites en tiempo real
-    const currentCanAdd = canAddMore(isProUser, 'horses', horses.length);
-    
-    if (!currentCanAdd) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'horses', horses.length)) {
       Alert.alert(
         t('limitReached'),
         t('upgradeToAddMore').replace('{item}', t('horses').toLowerCase()),

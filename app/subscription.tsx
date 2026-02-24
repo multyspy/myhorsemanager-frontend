@@ -149,13 +149,15 @@ export default function SubscriptionScreen() {
 
         {/* Packages */}
         <View style={styles.packagesSection}>
-          {offerings?.availablePackages.map((pkg) => {
-            // Debug: log package info
-            console.log('Package:', pkg.identifier, pkg.product?.productIdentifier);
-            
-            const isMonthly = pkg.identifier === '$rc_monthly' || pkg.identifier === 'monthly' || pkg.identifier === 'mhm_monthly' || pkg.identifier.toLowerCase().includes('mensual') || pkg.identifier.toLowerCase().includes('monthly');
+          {offerings?.availablePackages.map((pkg: any) => {
+            // COMPARACIÓN ESTRICTA - Sin includes()
+            const productId = pkg.product?.productIdentifier || '';
+            const isMonthly = productId === 'mhm_monthly';
+            const isAnnual = productId === 'mhm_annual';
             const isSelected = selectedPackage === pkg.identifier;
-            const isAnnual = pkg.identifier === '$rc_annual' || pkg.identifier === 'annual' || pkg.identifier === 'mhm_annual' || pkg.identifier.toLowerCase().includes('anual') || pkg.identifier.toLowerCase().includes('annual');
+            
+            // Debug: log package info
+            console.log('Package:', pkg.identifier, 'ProductID:', productId, 'isMonthly:', isMonthly, 'isAnnual:', isAnnual);
             
             return (
               <TouchableOpacity
@@ -175,14 +177,14 @@ export default function SubscriptionScreen() {
                 )}
                 
                 <View style={styles.packageHeader}>
-                  <Text style={styles.packageTitle}>
-                    {isMonthly ? t('monthly') : t('annual')}
+                  <Text style={[styles.packageTitle, isAnnual && styles.packageTitleHighlighted]}>
+                    {isMonthly ? t('monthly') : isAnnual ? t('annual') : pkg.identifier}
                   </Text>
-                  <Text style={styles.packagePrice}>
+                  <Text style={[styles.packagePrice, isAnnual && styles.packagePriceHighlighted]}>
                     {pkg.product.priceString}
                   </Text>
-                  <Text style={styles.packagePeriod}>
-                    {isMonthly ? t('perMonth') : t('perYear')}
+                  <Text style={[styles.packagePeriod, isAnnual && styles.packagePeriodHighlighted]}>
+                    {isMonthly ? t('perMonth') : isAnnual ? t('perYear') : ''}
                   </Text>
                 </View>
 
@@ -384,6 +386,15 @@ const styles = StyleSheet.create({
   packagePeriod: {
     fontSize: 14,
     color: '#666',
+  },
+  packageTitleHighlighted: {
+    color: '#fff',
+  },
+  packagePriceHighlighted: {
+    color: '#fff',
+  },
+  packagePeriodHighlighted: {
+    color: 'rgba(255,255,255,0.8)',
   },
   savingsText: {
     textAlign: 'center',

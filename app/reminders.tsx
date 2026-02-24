@@ -22,7 +22,7 @@ import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { shouldShowLimitPopup, FREE_LIMITS } from '../src/utils/subscriptionLimits';
 import { useRouter } from 'expo-router';
 
 
@@ -142,12 +142,12 @@ export default function RemindersScreen() {
     setEditingReminder(null);
   };
 
-  const { isProUser } = useSubscription();
+  const { isProUser, subscriptionStatus } = useSubscription();
   const router = useRouter();
 
   const openAddModal = () => {
-    // Verificar límite de recordatorios para usuarios gratuitos
-    if (!isProUser && reminders.length >= FREE_LIMITS.reminders) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'reminders', reminders.length)) {
       Alert.alert(
         t('limitReached'),
         t('upgradeToAddMore').replace('{item}', t('reminders').toLowerCase()),

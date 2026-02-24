@@ -22,7 +22,7 @@ import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { shouldShowLimitPopup, FREE_LIMITS } from '../src/utils/subscriptionLimits';
 import { useRouter } from 'expo-router';
 
 
@@ -102,7 +102,7 @@ const POSITIONS = [
 export default function PalmaresScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
-  const { isProUser } = useSubscription();
+  const { isProUser, subscriptionStatus } = useSubscription();
   const router = useRouter();
   const [palmaresList, setPalmaresList] = useState<Palmares[]>([]);
   const [horses, setHorses] = useState<Horse[]>([]);
@@ -116,8 +116,8 @@ export default function PalmaresScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'palmares' | 'premios'>('palmares');
 
-  // Check if user can add more palmares
-  const canAddPalmares = canAddMore(isProUser, 'palmares', palmaresList.length);
+  // Check if user can add more palmares - now uses subscriptionStatus
+  const canAddPalmares = !shouldShowLimitPopup(subscriptionStatus, 'palmares', palmaresList.length);
   
   // Form state
   const [selectedRiderId, setSelectedRiderId] = useState('');
@@ -240,10 +240,8 @@ export default function PalmaresScreen() {
   };
 
   const openAddModal = () => {
-    // Verificar límites en tiempo real
-    const currentCanAdd = canAddMore(isProUser, 'palmares', palmaresList.length);
-    
-    if (!currentCanAdd) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'palmares', palmaresList.length)) {
       Alert.alert(
         t('limitReached'),
         t('upgradeToAddMore').replace('{item}', t('palmares').toLowerCase()),

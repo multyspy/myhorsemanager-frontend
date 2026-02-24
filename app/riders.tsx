@@ -26,7 +26,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { compressImage } from '../src/utils/mediaUtils';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { canAddMore, shouldShowLimitPopup, FREE_LIMITS } from '../src/utils/subscriptionLimits';
 import { useRouter } from 'expo-router';
 
 const MAX_SIZE_KB = 250; // Maximum photo size in KB
@@ -54,7 +54,7 @@ interface Horse {
 export default function RidersScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
-  const { isProUser } = useSubscription();
+  const { isProUser, subscriptionStatus } = useSubscription();
   const router = useRouter();
   const [riders, setRiders] = useState<Rider[]>([]);
   const [horses, setHorses] = useState<Horse[]>([]);
@@ -82,7 +82,7 @@ export default function RidersScreen() {
   const [selectedBirthDate, setSelectedBirthDate] = useState(new Date());
 
   // Check if user can add more riders
-  const canAddRider = canAddMore(isProUser, 'riders', riders.length);
+  const canAddRider = canAddMore(subscriptionStatus, 'riders', riders.length);
   const [showBirthDatePicker, setShowBirthDatePicker] = useState(false);
   
   // Photo viewer state
@@ -141,10 +141,8 @@ export default function RidersScreen() {
   };
 
   const openAddModal = async () => {
-    // Verificar límites en tiempo real
-    const currentCanAdd = canAddMore(isProUser, 'riders', riders.length);
-    
-    if (!currentCanAdd) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'riders', riders.length)) {
       Alert.alert(
         t('limitReached'),
         t('upgradeToAddMore').replace('{item}', t('riders').toLowerCase()),

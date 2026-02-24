@@ -21,7 +21,7 @@ import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { canAddMore, shouldShowLimitPopup, FREE_LIMITS } from '../src/utils/subscriptionLimits';
 import { useRouter } from 'expo-router';
 
 
@@ -59,7 +59,7 @@ const SUPPLIER_CATEGORIES = [
 export default function SuppliersScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
-  const { isProUser } = useSubscription();
+  const { isProUser, subscriptionStatus } = useSubscription();
   const router = useRouter();
   
   // Function to get translated category names
@@ -97,7 +97,7 @@ export default function SuppliersScreen() {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
 
   // Check if user can add more suppliers
-  const canAddSupplier = canAddMore(isProUser, 'suppliers', suppliers.length);
+  const canAddSupplier = canAddMore(subscriptionStatus, 'suppliers', suppliers.length);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   
   // Form state
@@ -205,10 +205,8 @@ export default function SuppliersScreen() {
   };
 
   const openAddModal = () => {
-    // Verificar límites en tiempo real
-    const currentCanAdd = canAddMore(isProUser, 'suppliers', suppliers.length);
-    
-    if (!currentCanAdd) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'suppliers', suppliers.length)) {
       Alert.alert(
         t('limitReached'),
         t('upgradeToAddMore').replace('{item}', t('suppliers').toLowerCase()),

@@ -22,7 +22,7 @@ import { api } from '../src/utils/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../src/context/SubscriptionContext';
-import { canAddMore, FREE_LIMITS } from '../src/utils/subscriptionLimits';
+import { canAddMore, shouldShowLimitPopup, FREE_LIMITS } from '../src/utils/subscriptionLimits';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -126,7 +126,7 @@ const RIDER_CATEGORY_COLORS: Record<string, string> = {
 export default function ExpensesScreen() {
   const { token, isLoading: authLoading } = useAuth();
   const { t } = useTranslation();
-  const { isProUser } = useSubscription();
+  const { isProUser, subscriptionStatus } = useSubscription();
   const router = useRouter();
   
   // Function to get translated category name
@@ -167,7 +167,7 @@ export default function ExpensesScreen() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   // Check if user can add more expenses
-  const canAddExpense = canAddMore(isProUser, 'expenses', expenses.length);
+  const canAddExpense = canAddMore(subscriptionStatus, 'expenses', expenses.length);
   
   // Tab state (horse or rider)
   const [expenseType, setExpenseType] = useState<'horse' | 'rider'>('horse');
@@ -262,10 +262,8 @@ export default function ExpensesScreen() {
   };
 
   const openAddModal = () => {
-    // Verificar límites en tiempo real
-    const currentCanAdd = canAddMore(isProUser, 'expenses', expenses.length);
-    
-    if (!currentCanAdd) {
+    // Usar shouldShowLimitPopup que respeta el estado loading
+    if (shouldShowLimitPopup(subscriptionStatus, 'expenses', expenses.length)) {
       Alert.alert(
         t('limitReached'),
         t('upgradeToAddMore').replace('{item}', t('expenses').toLowerCase()),
